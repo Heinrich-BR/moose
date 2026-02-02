@@ -37,7 +37,8 @@ EquationSystemProblemOperator::Solve()
 {
   GetEquationSystem()->FormLinearSystem(_true_x, _true_rhs);
 
-  if ((GetEquationSystem()->GetTestVarNames().size() > 1 && _problem_data.jacobian_solver->isLOR()) || _problem_data.jacobian_solver->isEigensolver())
+  if (GetEquationSystem()->GetTestVarNames().size() > 1 &&
+      (_problem_data.jacobian_solver->isLOR() || _problem_data.jacobian_solver->isEigensolver()))
     mooseError("The LOR method and eigensolvers are only supported for single-variable systems");
 
   _problem_data.jacobian_solver->updateSolver(
