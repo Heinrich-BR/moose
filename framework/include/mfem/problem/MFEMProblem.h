@@ -328,6 +328,7 @@ public:
   };
 
   NumericType num_type;
+  const bool is_eigenproblem;
 
 protected:
   MFEMProblemData _problem_data;
