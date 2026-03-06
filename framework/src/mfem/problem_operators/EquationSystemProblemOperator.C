@@ -37,7 +37,7 @@ EquationSystemProblemOperator::Solve()
 {
   GetEquationSystem()->FormLinearSystem(_true_x, _true_rhs);
 
-  if (GetEquationSystem()->GetTestVarNames().size() > 1)
+  if (_problem_data.jacobian_solver->isLOR() && GetEquationSystem()->GetTestVarNames().size() > 1)
     mooseError("The LOR method is only supported for single-variable systems");
 
   _problem_data.jacobian_solver->updateSolver(
