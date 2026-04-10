@@ -41,10 +41,7 @@ MFEMHypreBoomerAMG::MFEMHypreBoomerAMG(const InputParameters & parameters)
   constructSolver();
 }
 
-MFEMHypreBoomerAMG::~MFEMHypreBoomerAMG()
-{
-  _solver.reset();
-}
+MFEMHypreBoomerAMG::~MFEMHypreBoomerAMG() { _solver.reset(); }
 
 void
 MFEMHypreBoomerAMG::constructSolver()
