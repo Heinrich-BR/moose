@@ -10,6 +10,7 @@
 #ifdef MOOSE_MFEM_ENABLED
 
 #include "MFEMSolverBase.h"
+#include "MFEMEigensolverBase.h"
 
 InputParameters
 MFEMSolverBase::validParams()
