@@ -32,6 +32,11 @@ ifeq ($(shell uname -s),Darwin)
 	lib_suffix := dylib
 endif
 
+# Detect whether the active linker is LLVM lld. lld rejects GNU-ld-only flags
+# like --copy-dt-needed-entries, so any link line that uses them must take a
+# different branch when building with an lld-based toolchain (e.g. ROCm/HIP).
+libmesh_USING_LLD := $(if $(findstring LLD,$(shell $(libmesh_CXX) -Wl,--version 2>/dev/null)),yes,)
+
 #
 # MOOSE
 #
@@ -140,6 +145,8 @@ ifeq ($(ENABLE_LIBTORCH),true)
     # Dynamically linking with the available pytorch library
 		ifeq ($(shell uname -s),Darwin)
 			libmesh_LDFLAGS += -Wl,-rpath,$(LIBTORCH_DIR)/lib
+		else ifeq ($(libmesh_USING_LLD),yes)
+			libmesh_LDFLAGS += -Wl,-rpath,$(LIBTORCH_DIR)/lib
 		else
 		  libmesh_LDFLAGS += -Wl,--copy-dt-needed-entries,-rpath,$(LIBTORCH_DIR)/lib
 		endif
@@ -173,6 +180,8 @@ ifeq ($(ENABLE_MFEM),true)
 
     # Dynamically linking with the available MFEM library
     ifeq ($(shell uname -s),Darwin)
+      libmesh_LDFLAGS += -Wl,-rpath,$(MFEM_DIR)/lib
+    else ifeq ($(libmesh_USING_LLD),yes)
       libmesh_LDFLAGS += -Wl,-rpath,$(MFEM_DIR)/lib
     else
       libmesh_LDFLAGS += -Wl,--copy-dt-needed-entries,-rpath,$(MFEM_DIR)/lib
