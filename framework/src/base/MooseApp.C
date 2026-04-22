@@ -3348,6 +3348,42 @@ MooseApp::isInTree()
 }
 
 #ifdef MOOSE_MFEM_ENABLED
+#if __has_include(<mpi-ext.h>)
+#include <mpi-ext.h>
+#endif
+
+namespace
+{
+/// Checks for OpenMPI and MPICH whether we are using a GPU-aware MPI library.
+bool
+mpiIsGPUAware()
+{
+#if defined(MPIX_ROCM_AWARE_SUPPORT)
+  if (MPIX_Query_rocm_support() == 1)
+    return true;
+#endif
+#if defined(MPIX_CUDA_AWARE_SUPPORT)
+  if (MPIX_Query_cuda_support() == 1)
+    return true;
+#endif
+#if defined(MPIX_GPU_SUPPORT_CUDA)
+  {
+    int flag = 0;
+    if (MPIX_GPU_query_support(MPIX_GPU_SUPPORT_CUDA, &flag) == MPI_SUCCESS && flag)
+      return true;
+  }
+#endif
+#if defined(MPIX_GPU_SUPPORT_HIP)
+  {
+    int flag = 0;
+    if (MPIX_GPU_query_support(MPIX_GPU_SUPPORT_HIP, &flag) == MPI_SUCCESS && flag)
+      return true;
+  }
+#endif
+  return false;
+}
+}
+
 void
 MooseApp::setMFEMDevice(const std::string & device_string, Moose::PassKey<MFEMProblemSolve>)
 {
@@ -3357,6 +3393,9 @@ MooseApp::setMFEMDevice(const std::string & device_string, Moose::PassKey<MFEMPr
   {
     _mfem_device = std::make_shared<mfem::Device>(device_string);
     _mfem_devices = std::move(string_set);
+    if (!mfem::Device::GetGPUAwareMPI() &&
+        _mfem_device->Allows(mfem::Backend::CUDA_MASK | mfem::Backend::HIP_MASK) && mpiIsGPUAware())
+      mfem::Device::SetGPUAwareMPI(true);
     _mfem_device->Print(Moose::out);
   }
   else if (!device_string.empty() && string_set != _mfem_devices)
