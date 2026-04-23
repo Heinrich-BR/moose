@@ -16,6 +16,7 @@ endif
 IGNORE_CONTRIB_INC ?= libtorch mfem neml2 kokkos
 ENABLE_LIBTORCH ?= false
 ENABLE_MFEM ?= false
+ENABLE_ROCTX ?= false
 ENABLE_KOKKOS ?= false
 ENABLE_KOKKOS_GPU ?= true
 
@@ -167,6 +168,14 @@ ifeq ($(ENABLE_MFEM),true)
 
     # Dynamically linking with the available MFEM library
     libmesh_LDFLAGS += -Wl,-rpath,$(MFEM_DIR)/lib -L$(MFEM_DIR)/lib -lmfem-$(METHOD) -lmfem-common-$(METHOD)
+
+    # Optional ROCTx GPU profiling annotations for the MFEM backend.
+    # Enable with: make ENABLE_MFEM=true ENABLE_ROCTX=true ROCM_DIR=/opt/rocm
+    ifeq ($(ENABLE_ROCTX),true)
+      ROCM_DIR ?= /opt/rocm
+      libmesh_CPPFLAGS += -DMOOSE_HAVE_ROCTX -I$(ROCM_DIR)/include
+      libmesh_LDFLAGS  += -Wl,-rpath,$(ROCM_DIR)/lib -L$(ROCM_DIR)/lib -lroctx64
+    endif
 
   else
     # No mfem library found

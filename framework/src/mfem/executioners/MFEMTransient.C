@@ -13,6 +13,7 @@
 #include "MFEMProblem.h"
 #include "TimeDependentEquationSystemProblemOperator.h"
 #include "TimeStepper.h"
+#include "MFEMRoctx.h"
 
 registerMooseObject("MooseApp", MFEMTransient);
 
@@ -45,6 +46,7 @@ MFEMTransient::MFEMTransient(const InputParameters & params)
 void
 MFEMTransient::init()
 {
+  MOOSE_MFEM_ROCTX_RANGE("MFEMTransient::init");
   TransientBase::init();
 
   // Set up initial conditions
@@ -63,12 +65,15 @@ MFEMTransient::init()
 void
 MFEMTransient::takeStep(Real input_dt)
 {
+  MOOSE_MFEM_ROCTX_RANGE("MFEMTransient::takeStep");
   _dt_old = _dt;
 
   if (input_dt == -1.0)
     _dt = computeConstrainedDT();
   else
     _dt = input_dt;
+
+  MOOSE_MFEM_ROCTX_MARKF("takeStep step=%d t=%g dt=%g", _t_step, _time, _dt);
 
   _time_stepper->preSolve();
 

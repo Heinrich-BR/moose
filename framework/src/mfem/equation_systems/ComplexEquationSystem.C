@@ -11,6 +11,7 @@ ComplexEquationSystem::Init(GridFunctions & gridfunctions,
                             ComplexGridFunctions & cmplx_gridfunctions,
                             mfem::AssemblyLevel assembly_level)
 {
+  MOOSE_MFEM_ROCTX_RANGE("CmplxEqnSys::Init");
   _assembly_level = assembly_level;
 
   if (gridfunctions.size())
@@ -52,6 +53,7 @@ ComplexEquationSystem::Init(GridFunctions & gridfunctions,
 void
 ComplexEquationSystem::BuildEquationSystem()
 {
+  MOOSE_MFEM_ROCTX_RANGE("CmplxEqnSys::BuildEquationSystem");
   BuildBilinearForms();
   BuildLinearForms();
 }
@@ -59,6 +61,7 @@ ComplexEquationSystem::BuildEquationSystem()
 void
 ComplexEquationSystem::BuildLinearForms()
 {
+  MOOSE_MFEM_ROCTX_RANGE("CmplxEqnSys::BuildLinearForms");
   // Register linear forms
   for (const auto i : index_range(_test_var_names))
   {
@@ -83,6 +86,7 @@ ComplexEquationSystem::BuildLinearForms()
 void
 ComplexEquationSystem::BuildBilinearForms()
 {
+  MOOSE_MFEM_ROCTX_RANGE("CmplxEqnSys::BuildBilinearForms");
   // Register bilinear forms
   for (const auto i : index_range(_test_var_names))
   {
@@ -107,6 +111,7 @@ ComplexEquationSystem::ApplyComplexEssentialBC(const std::string & var_name,
                                                mfem::ParComplexGridFunction & trial_gf,
                                                mfem::Array<int> & global_ess_markers)
 {
+  MOOSE_MFEM_ROCTX_RANGE("CmplxEqnSys::ApplyComplexEssentialBC");
   if (_cmplx_essential_bc_map.Has(var_name))
   {
     auto & bcs = _cmplx_essential_bc_map.GetRef(var_name);
@@ -126,6 +131,7 @@ ComplexEquationSystem::ApplyComplexEssentialBC(const std::string & var_name,
 void
 ComplexEquationSystem::ApplyEssentialBCs()
 {
+  MOOSE_MFEM_ROCTX_RANGE("CmplxEqnSys::ApplyEssentialBCs");
   _ess_tdof_lists.resize(_trial_var_names.size());
   for (const auto i : index_range(_trial_var_names))
   {
@@ -150,6 +156,7 @@ ComplexEquationSystem::ApplyEssentialBCs()
 void
 ComplexEquationSystem::AddComplexKernel(std::shared_ptr<MFEMComplexKernel> kernel)
 {
+  MOOSE_MFEM_ROCTX_RANGE("CmplxEqnSys::AddComplexKernel");
   const auto & trial_var_name = kernel->getTrialVariableName();
   const auto & test_var_name = kernel->getTestVariableName();
   AddCoupledVariableNameIfMissing(trial_var_name);
@@ -173,6 +180,7 @@ ComplexEquationSystem::AddComplexKernel(std::shared_ptr<MFEMComplexKernel> kerne
 void
 ComplexEquationSystem::AddComplexIntegratedBC(std::shared_ptr<MFEMComplexIntegratedBC> bc)
 {
+  MOOSE_MFEM_ROCTX_RANGE("CmplxEqnSys::AddComplexIntegratedBC");
   const auto & trial_var_name = bc->getTrialVariableName();
   const auto & test_var_name = bc->getTestVariableName();
   AddCoupledVariableNameIfMissing(trial_var_name);
@@ -196,6 +204,7 @@ ComplexEquationSystem::AddComplexIntegratedBC(std::shared_ptr<MFEMComplexIntegra
 void
 ComplexEquationSystem::AddComplexEssentialBCs(std::shared_ptr<MFEMComplexEssentialBC> bc)
 {
+  MOOSE_MFEM_ROCTX_RANGE("CmplxEqnSys::AddComplexEssentialBCs");
   const auto & test_var_name = bc->getTestVariableName();
   AddTestVariableNameIfMissing(test_var_name);
   // Register new complex essential bc map if not present for the test variable
@@ -212,6 +221,7 @@ ComplexEquationSystem::FormSystemOperator(mfem::OperatorHandle & op,
                                           mfem::BlockVector & trueX,
                                           mfem::BlockVector & trueRHS)
 {
+  MOOSE_MFEM_ROCTX_RANGE("CmplxEqnSys::FormSystemOperator");
   auto & test_var_name = _test_var_names.at(0);
   mfem::Vector aux_x, aux_rhs;
   mfem::OperatorPtr aux_a;
@@ -239,6 +249,7 @@ ComplexEquationSystem::FormSystemMatrix(mfem::OperatorHandle & op,
                                         mfem::BlockVector & trueX,
                                         mfem::BlockVector & trueRHS)
 {
+  MOOSE_MFEM_ROCTX_RANGE("CmplxEqnSys::FormSystemMatrix");
 
   // Allocate block operator
   DeleteHBlocks();
@@ -280,6 +291,7 @@ ComplexEquationSystem::FormSystemMatrix(mfem::OperatorHandle & op,
 void
 ComplexEquationSystem::Mult(const mfem::Vector & x, mfem::Vector & residual) const
 {
+  MOOSE_MFEM_ROCTX_RANGE("CmplxEqnSys::Mult");
   _linear_operator->Mult(x, residual);
   x.HostRead();
   residual.HostRead();

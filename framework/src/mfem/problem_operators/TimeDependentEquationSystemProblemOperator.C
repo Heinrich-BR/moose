@@ -10,6 +10,7 @@
 #ifdef MOOSE_MFEM_ENABLED
 
 #include "TimeDependentEquationSystemProblemOperator.h"
+#include "MFEMRoctx.h"
 
 namespace Moose::MFEM
 {
@@ -36,6 +37,9 @@ TimeDependentEquationSystemProblemOperator::Init(mfem::BlockVector & X)
 void
 TimeDependentEquationSystemProblemOperator::Solve()
 {
+  MOOSE_MFEM_ROCTX_RANGE("TimeDepEqnSysProbOp::Solve");
+  MOOSE_MFEM_ROCTX_MARK("TimeDepEqnSysProbOp::Solve start");
+
   auto & dt = _problem.dt();
   auto & gfs = _problem_data.gridfunctions;
   auto & tdm = _problem_data.time_derivative_map;
@@ -61,6 +65,9 @@ TimeDependentEquationSystemProblemOperator::ImplicitSolve(const mfem::real_t dt,
                                                           const mfem::Vector &,
                                                           mfem::Vector & X_new)
 {
+  MOOSE_MFEM_ROCTX_RANGE("TimeDepEqnSysProbOp::ImplicitSolve");
+  MOOSE_MFEM_ROCTX_MARK("TimeDepEqnSysProbOp::ImplicitSolve start");
+
   _problem_data.coefficients.setTime(GetTime());
   BuildEquationSystemOperator(dt);
 
@@ -72,14 +79,17 @@ TimeDependentEquationSystemProblemOperator::ImplicitSolve(const mfem::real_t dt,
 
   _problem_data.nonlinear_solver->SetPreconditioner(_problem_data.jacobian_solver->getSolver());
   _problem_data.nonlinear_solver->SetOperator(*GetEquationSystem());
-  _problem_data.nonlinear_solver->Mult(_true_rhs, _true_x);
-
+    {
+      MOOSE_MFEM_ROCTX_RANGE("NonlinearSolver::Mult");
+      _problem_data.nonlinear_solver->Mult(_true_rhs, _true_x);
+    }
   X_new = _true_x;
 }
 
 void
 TimeDependentEquationSystemProblemOperator::BuildEquationSystemOperator(mfem::real_t dt)
 {
+  MOOSE_MFEM_ROCTX_RANGE("BuildTimeDepEqnSysOperator");
   GetEquationSystem()->SetTimeStep(dt);
   GetEquationSystem()->BuildEquationSystem();
   GetEquationSystem()->FormSystem(_true_x, _true_rhs);

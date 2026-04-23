@@ -12,6 +12,7 @@
 #include "Executioner.h"
 #include "MFEMProblemSolve.h"
 #include "MFEMProblem.h"
+#include "MFEMRoctx.h"
 
 InputParameters
 MFEMProblemSolve::validParams()
@@ -52,6 +53,7 @@ MFEMProblemSolve::MFEMProblemSolve(
 bool
 MFEMProblemSolve::solve()
 {
+  MOOSE_MFEM_ROCTX_RANGE("MFEMProblemSolve::solve");
   // FixedPointSolve::solve() is libMesh specific, so we need
   // to include all steps therein relevant to the MFEM backend here.
 

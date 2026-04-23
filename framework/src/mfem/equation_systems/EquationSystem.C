@@ -11,6 +11,7 @@
 
 #include "EquationSystem.h"
 #include "libmesh/int_range.h"
+#include "MFEMRoctx.h"
 
 namespace Moose::MFEM
 {
@@ -90,6 +91,7 @@ EquationSystem::SetTrialVariableNames()
 void
 EquationSystem::AddKernel(std::shared_ptr<MFEMKernel> kernel)
 {
+  MOOSE_MFEM_ROCTX_RANGE("EqnSys::AddKernel");
   const auto & trial_var_name = kernel->getTrialVariableName();
   const auto & test_var_name = kernel->getTestVariableName();
   AddCoupledVariableNameIfMissing(trial_var_name);
@@ -113,6 +115,7 @@ EquationSystem::AddKernel(std::shared_ptr<MFEMKernel> kernel)
 void
 EquationSystem::AddIntegratedBC(std::shared_ptr<MFEMIntegratedBC> bc)
 {
+  MOOSE_MFEM_ROCTX_RANGE("EqnSys::AddIntegratedBC");
   const auto & trial_var_name = bc->getTrialVariableName();
   const auto & test_var_name = bc->getTestVariableName();
   AddCoupledVariableNameIfMissing(trial_var_name);
@@ -136,6 +139,7 @@ EquationSystem::AddIntegratedBC(std::shared_ptr<MFEMIntegratedBC> bc)
 void
 EquationSystem::AddEssentialBC(std::shared_ptr<MFEMEssentialBC> bc)
 {
+  MOOSE_MFEM_ROCTX_RANGE("EqnSys::AddEssentialBC");
   const auto & test_var_name = bc->getTestVariableName();
   AddTestVariableNameIfMissing(test_var_name);
   // Register new essential bc map if not present for the test variable
@@ -152,6 +156,7 @@ EquationSystem::Init(Moose::MFEM::GridFunctions & gridfunctions,
                      Moose::MFEM::ComplexGridFunctions & cmplx_gridfunctions,
                      mfem::AssemblyLevel assembly_level)
 {
+  MOOSE_MFEM_ROCTX_RANGE("EqnSys::Init");
   _assembly_level = assembly_level;
 
   if (cmplx_gridfunctions.size())
@@ -207,6 +212,8 @@ EquationSystem::ApplyEssentialBC(const std::string & var_name,
                                  mfem::ParGridFunction & trial_gf,
                                  mfem::Array<int> & global_ess_markers)
 {
+  MOOSE_MFEM_ROCTX_RANGE("EqnSys::ApplyEssentialBC");
+
   if (_essential_bc_map.Has(var_name))
   {
     auto & bcs = _essential_bc_map.GetRef(var_name);
@@ -226,6 +233,7 @@ EquationSystem::ApplyEssentialBC(const std::string & var_name,
 void
 EquationSystem::ApplyEssentialBCs()
 {
+  MOOSE_MFEM_ROCTX_RANGE("EqnSys::ApplyEssentialBCs");
   _ess_tdof_lists.resize(_trial_var_names.size());
   for (const auto i : index_range(_trial_var_names))
   {
@@ -250,6 +258,7 @@ EquationSystem::ApplyEssentialBCs()
 void
 EquationSystem::EliminateCoupledVariables()
 {
+  MOOSE_MFEM_ROCTX_RANGE("EqnSys::EliminateCoupledVariables");
   for (const auto & test_var_name : _test_var_names)
     for (const auto & eliminated_var_name : _eliminated_var_names)
       if (_mblfs.Has(test_var_name) && _mblfs.Get(test_var_name)->Has(eliminated_var_name) &&
@@ -265,6 +274,7 @@ EquationSystem::FormLinearSystem(mfem::OperatorHandle & op,
                                  mfem::BlockVector & trueX,
                                  mfem::BlockVector & trueRHS)
 {
+  MOOSE_MFEM_ROCTX_RANGE("EqnSys::FormLinearSystem");
   mooseAssert(_test_var_names.size() == _trial_var_names.size(),
               "Number of test and trial variables must be the same for block matrix assembly.");
 
@@ -288,6 +298,7 @@ EquationSystem::FormSystemOperator(mfem::OperatorHandle & op,
                                    mfem::BlockVector & trueX,
                                    mfem::BlockVector & trueRHS)
 {
+  MOOSE_MFEM_ROCTX_RANGE("EqnSys::FormSystemOperator");
   auto & test_var_name = _test_var_names.at(0);
   mfem::Vector aux_x, aux_rhs;
   mfem::OperatorPtr aux_a;
@@ -315,6 +326,7 @@ EquationSystem::FormSystemMatrix(mfem::OperatorHandle & op,
                                  mfem::BlockVector & trueX,
                                  mfem::BlockVector & trueRHS)
 {
+  MOOSE_MFEM_ROCTX_RANGE("EqnSys::FormSystemMatrix");
   // Allocate block operator
   DeleteHBlocks();
   _h_blocks.SetSize(_test_var_names.size(), _trial_var_names.size());
@@ -377,6 +389,7 @@ EquationSystem::FormSystemMatrix(mfem::OperatorHandle & op,
 void
 EquationSystem::FormSystem(mfem::BlockVector & trueX, mfem::BlockVector & trueRHS)
 {
+  MOOSE_MFEM_ROCTX_RANGE("EqnSys::FormSystem");
   height = trueX.Size();
   width = trueRHS.Size();
   // Store block offsets
@@ -391,6 +404,7 @@ EquationSystem::FormSystem(mfem::BlockVector & trueX, mfem::BlockVector & trueRH
 void
 EquationSystem::Mult(const mfem::Vector & sol, mfem::Vector & residual) const
 {
+  MOOSE_MFEM_ROCTX_RANGE("EqnSys::Mult");
   // Update gridfunctions that may be referenced by coefficients within nonlinear integrators
   const mfem::BlockVector blockSolution(const_cast<mfem::Vector &>(sol), _block_true_offsets);
   SetTrialVariablesFromTrueVectors(blockSolution);
@@ -420,6 +434,7 @@ EquationSystem::Mult(const mfem::Vector & sol, mfem::Vector & residual) const
 void
 EquationSystem::FormJacobianMatrix(const mfem::Vector & u)
 {
+  MOOSE_MFEM_ROCTX_RANGE("EqnSys::FormJacobianMatrix");
   DeleteJacobianBlocks();
   _jacobian_blocks.SetSize(_test_var_names.size(), _trial_var_names.size());
   _jacobian_blocks = nullptr;
@@ -473,6 +488,7 @@ EquationSystem::SetTrialVariablesFromTrueVectors(const mfem::BlockVector & trueX
 void
 EquationSystem::BuildLinearForms()
 {
+  MOOSE_MFEM_ROCTX_RANGE("EqnSys::BuildLinearForms");
   // Register linear forms
   for (const auto i : index_range(_test_var_names))
   {
@@ -500,6 +516,7 @@ EquationSystem::BuildLinearForms()
 void
 EquationSystem::BuildNonlinearForms()
 {
+  MOOSE_MFEM_ROCTX_RANGE("EqnSys::BuildNonlinearForms");
   // Register non-linear Action forms
   for (const auto i : index_range(_test_var_names))
   {
@@ -516,6 +533,7 @@ EquationSystem::BuildNonlinearForms()
 void
 EquationSystem::BuildBilinearForms()
 {
+  MOOSE_MFEM_ROCTX_RANGE("EqnSys::BuildBilinearForms");
   // Register bilinear forms
   for (const auto i : index_range(_test_var_names))
   {
@@ -537,6 +555,7 @@ EquationSystem::BuildBilinearForms()
 void
 EquationSystem::BuildMixedBilinearForms()
 {
+  MOOSE_MFEM_ROCTX_RANGE("EqnSys::BuildMixedBilinearForms");
   // Register mixed bilinear forms. Note that not all combinations may
   // have a kernel.
 
@@ -576,6 +595,7 @@ EquationSystem::BuildMixedBilinearForms()
 void
 EquationSystem::BuildEquationSystem()
 {
+  MOOSE_MFEM_ROCTX_RANGE("EqnSys::BuildEquationSystem");
   BuildBilinearForms();
   BuildMixedBilinearForms();
   BuildLinearForms();

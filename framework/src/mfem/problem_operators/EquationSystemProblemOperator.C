@@ -10,6 +10,7 @@
 #ifdef MOOSE_MFEM_ENABLED
 
 #include "EquationSystemProblemOperator.h"
+#include "MFEMRoctx.h"
 
 namespace Moose::MFEM
 {
@@ -24,6 +25,8 @@ EquationSystemProblemOperator::SetGridFunctions()
 void
 EquationSystemProblemOperator::Solve()
 {
+  MOOSE_MFEM_ROCTX_RANGE("EqnSysProbOp::Solve");
+  MOOSE_MFEM_ROCTX_MARK("EqnSysProbOp::Solve start");
   BuildEquationSystemOperator();
 
   if (_problem_data.jacobian_solver->isLOR() && GetEquationSystem()->GetTestVarNames().size() > 1)
@@ -34,7 +37,10 @@ EquationSystemProblemOperator::Solve()
 
   _problem_data.nonlinear_solver->SetPreconditioner(_problem_data.jacobian_solver->getSolver());
   _problem_data.nonlinear_solver->SetOperator(*GetEquationSystem());
-  _problem_data.nonlinear_solver->Mult(_true_rhs, _true_x);
+  {
+    MOOSE_MFEM_ROCTX_RANGE("NonlinearSolver::Mult");
+    _problem_data.nonlinear_solver->Mult(_true_rhs, _true_x);
+  }
 
   GetEquationSystem()->SetTrialVariablesFromTrueVectors(_true_x);
 }
@@ -42,6 +48,7 @@ EquationSystemProblemOperator::Solve()
 void
 EquationSystemProblemOperator::BuildEquationSystemOperator()
 {
+  MOOSE_MFEM_ROCTX_RANGE("BuildEqnSysOperator");
   GetEquationSystem()->BuildEquationSystem();
   GetEquationSystem()->FormSystem(_true_x, _true_rhs);
 }

@@ -12,6 +12,7 @@
 #include "MFEMSteady.h"
 #include "MFEMProblem.h"
 #include "EquationSystemProblemOperator.h"
+#include "MFEMRoctx.h"
 
 registerMooseObject("MooseApp", MFEMSteady);
 
@@ -61,6 +62,7 @@ MFEMSteady::MFEMSteady(const InputParameters & params)
 void
 MFEMSteady::init()
 {
+  MOOSE_MFEM_ROCTX_RANGE("MFEMSteady::init");
   _mfem_problem.execute(EXEC_PRE_MULTIAPP_SETUP);
   _mfem_problem.initialSetup();
 
@@ -80,6 +82,7 @@ MFEMSteady::init()
 void
 MFEMSteady::execute()
 {
+  MOOSE_MFEM_ROCTX_RANGE("MFEMSteady::execute");
   if (_app.isRecovering())
   {
     _console << "\nCannot recover steady solves!\nExiting...\n" << std::endl;

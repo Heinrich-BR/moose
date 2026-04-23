@@ -10,6 +10,7 @@
 #ifdef MOOSE_MFEM_ENABLED
 
 #include "TimeDependentEquationSystem.h"
+#include "MFEMRoctx.h"
 
 namespace Moose::MFEM
 {
@@ -22,6 +23,7 @@ TimeDependentEquationSystem::TimeDependentEquationSystem(
 void
 TimeDependentEquationSystem::AddKernel(std::shared_ptr<MFEMKernel> kernel)
 {
+  MOOSE_MFEM_ROCTX_RANGE("TimeDepEqnSys::AddKernel");
   if (!_time_derivative_map.isTimeDerivative(kernel->getTrialVariableName()))
   {
     EquationSystem::AddKernel(kernel);
@@ -52,6 +54,7 @@ TimeDependentEquationSystem::AddKernel(std::shared_ptr<MFEMKernel> kernel)
 void
 TimeDependentEquationSystem::BuildBilinearForms()
 {
+  MOOSE_MFEM_ROCTX_RANGE("TimeDepEqnSys::BuildBilinearForms");
   // Register bilinear forms
   for (const auto i : index_range(_test_var_names))
   {
@@ -86,6 +89,7 @@ TimeDependentEquationSystem::BuildBilinearForms()
 void
 TimeDependentEquationSystem::BuildMixedBilinearForms()
 {
+  MOOSE_MFEM_ROCTX_RANGE("TimeDepEqnSys::BuildMixedBilinearForms");
   // Register mixed bilinear forms. Note that not all combinations may
   // have a kernel.
 
@@ -166,6 +170,7 @@ TimeDependentEquationSystem::BuildMixedBilinearForms()
 void
 TimeDependentEquationSystem::BuildNonlinearForms()
 {
+  MOOSE_MFEM_ROCTX_RANGE("TimeDepEqnSys::BuildNonlinearForms");
   // Register non-linear Action forms
   for (const auto i : index_range(_test_var_names))
   {
@@ -182,6 +187,7 @@ TimeDependentEquationSystem::BuildNonlinearForms()
 void
 TimeDependentEquationSystem::EliminateCoupledVariables()
 {
+  MOOSE_MFEM_ROCTX_RANGE("TimeDepEqnSys::EliminateCoupledVariables");
   for (const auto & test_var_name : _test_var_names)
   {
     auto & lf = *_lfs.Get(test_var_name) *= _dt;

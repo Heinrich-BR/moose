@@ -11,6 +11,7 @@
 
 #include "MFEMMesh.h"
 #include "libmesh/mesh_generation.h"
+#include "MFEMRoctx.h"
 
 registerMooseObject("MooseApp", MFEMMesh);
 
@@ -63,10 +64,12 @@ MFEMMesh::buildMesh()
         "Cannot define serial_refine and uniform_refine to be nonzero at the same time (they "
         "are the same variable). Please choose one.\n");
 
+  {
+  MOOSE_MFEM_ROCTX_RANGE("Mesh:SerialRefinement");
   uniformRefinement(mfem_ser_mesh,
                     isParamSetByUser("serial_refine") ? getParam<unsigned int>("serial_refine")
                                                       : getParam<unsigned int>("uniform_refine"));
-
+  }
   // MFEM supports load balancing of parallel non-conforming meshes
   // with a space-filling curve partitioning, and we can improve it
   // by re-ordering the mesh. For now, we only support the Hilbert
@@ -89,8 +92,10 @@ MFEMMesh::buildMesh()
   _mfem_par_mesh = std::make_shared<mfem::ParMesh>(comm, mfem_ser_mesh);
 
   // Perform parallel refinements
+  {
+  MOOSE_MFEM_ROCTX_RANGE("Mesh:ParallelRefinement");
   uniformRefinement(*_mfem_par_mesh, getParam<unsigned int>("parallel_refine"));
-
+  }
   if (isParamSetByUser("displacement"))
     _mesh_displacement_variable.emplace(getParam<std::string>("displacement"));
 }

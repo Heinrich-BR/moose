@@ -10,6 +10,7 @@
 #ifdef MOOSE_MFEM_ENABLED
 
 #include "ComplexEquationSystemProblemOperator.h"
+#include "MFEMRoctx.h"
 
 namespace Moose::MFEM
 {
@@ -52,6 +53,8 @@ ComplexEquationSystemProblemOperator::SetGridFunctions()
 void
 ComplexEquationSystemProblemOperator::Solve()
 {
+  MOOSE_MFEM_ROCTX_RANGE("CmplxEqnSysProbOp::Solve");
+  MOOSE_MFEM_ROCTX_MARK("CmplxEqnSysProbOp::Solve start");
   BuildEquationSystemOperator();
 
   if (_problem_data.jacobian_solver->isLOR())
