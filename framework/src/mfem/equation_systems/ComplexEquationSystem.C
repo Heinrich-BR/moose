@@ -2,6 +2,7 @@
 
 #include "ComplexEquationSystem.h"
 #include "libmesh/int_range.h"
+#include "MFEMRoctx.h"
 
 namespace Moose::MFEM
 {
