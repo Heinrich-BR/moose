@@ -12,11 +12,12 @@
 #pragma once
 
 #include "MFEMProblem.h"
+#include "PerfGraphInterface.h"
 
 namespace Moose::MFEM
 {
 /// Interface inherited by ProblemOperator and TimeDependentProblemOperator. Removes duplicated code in both classes.
-class ProblemOperatorBase
+class ProblemOperatorBase : public PerfGraphInterface
 {
 public:
   ProblemOperatorBase(MFEMProblem & problem);

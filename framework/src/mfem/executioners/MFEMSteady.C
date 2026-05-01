@@ -60,7 +60,8 @@ MFEMSteady::MFEMSteady(const InputParameters & params)
     }
     else if (_mfem_problem.getNumericType() == MFEMProblem::NumericType::COMPLEX)
     {
-      _mfem_problem_data.eqn_system = std::make_shared<Moose::MFEM::ComplexEquationSystem>();
+      _mfem_problem_data.eqn_system =
+          std::make_shared<Moose::MFEM::ComplexEquationSystem>(_mfem_problem.perfGraph());
       auto problem_operator =
           std::make_shared<Moose::MFEM::ComplexEquationSystemProblemOperator>(_mfem_problem);
       addProblemOperator(std::move(problem_operator));

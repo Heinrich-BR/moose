@@ -14,8 +14,8 @@
 namespace Moose::MFEM
 {
 TimeDependentEquationSystem::TimeDependentEquationSystem(
-    const Moose::MFEM::TimeDerivativeMap & time_derivative_map)
-  : _dt(1.0), _time_derivative_map(time_derivative_map)
+    PerfGraph & perf_graph, const Moose::MFEM::TimeDerivativeMap & time_derivative_map)
+  : EquationSystem(perf_graph), _dt(1.0), _time_derivative_map(time_derivative_map)
 {
 }
 

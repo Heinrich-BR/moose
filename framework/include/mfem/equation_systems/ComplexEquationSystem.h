@@ -20,7 +20,7 @@ class ComplexEquationSystem : public EquationSystem
 {
 
 public:
-  ComplexEquationSystem() = default;
+  ComplexEquationSystem(PerfGraph & perf_graph) : EquationSystem(perf_graph) {}
   ~ComplexEquationSystem() = default;
 
   // Build forms

@@ -75,7 +75,11 @@ MFEMDataCollection::output()
   // Write fields to disk
   dc.SetCycle(getFileNumber());
   dc.SetTime(time());
-  dc.Save();
+  {
+    TIME_SECTION("MFEM::MFEMDataCollection::output::Save", 1, "Saving MFEM data collection");
+    dc.Save();
+    MFEM_DEVICE_SYNC;
+  }
   ++_file_num;
 }
 

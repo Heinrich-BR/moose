@@ -72,7 +72,13 @@ TimeDependentEquationSystemProblemOperator::ImplicitSolve(const mfem::real_t dt,
 
   _problem_data.nonlinear_solver->SetPreconditioner(_problem_data.jacobian_solver->getSolver());
   _problem_data.nonlinear_solver->SetOperator(*GetEquationSystem());
-  _problem_data.nonlinear_solver->Mult(_true_rhs, _true_x);
+  {
+    TIME_SECTION("MFEM::TimeDependentEquationSystemProblemOperator::ImplicitSolve::Mult",
+                 1,
+                 "Solving MFEM time-dependent system");
+    _problem_data.nonlinear_solver->Mult(_true_rhs, _true_x);
+    MFEM_DEVICE_SYNC;
+  }
 
   X_new = _true_x;
 }
