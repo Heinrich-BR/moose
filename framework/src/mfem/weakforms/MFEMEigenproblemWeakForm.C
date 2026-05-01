@@ -11,6 +11,7 @@
 
 #include "MFEMEigenproblemWeakForm.h"
 #include "EigenproblemEquationSystem.h"
+#include "MFEMProblem.h"
 
 registerMooseObject("MooseApp", MFEMEigenproblemWeakForm);
 
@@ -31,7 +32,7 @@ MFEMEigenproblemWeakForm::MFEMEigenproblemWeakForm(const InputParameters & param
 std::shared_ptr<Moose::MFEM::EquationSystem>
 MFEMEigenproblemWeakForm::makeEquationSystem()
 {
-  return std::make_shared<Moose::MFEM::EigenproblemEquationSystem>();
+  return std::make_shared<Moose::MFEM::EigenproblemEquationSystem>(getMFEMProblem().perfGraph());
 }
 
 #endif

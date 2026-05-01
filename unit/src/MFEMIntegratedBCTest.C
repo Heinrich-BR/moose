@@ -132,6 +132,8 @@ private:
 class TestEquationSystem : public Moose::MFEM::EquationSystem
 {
 public:
+  using Moose::MFEM::EquationSystem::EquationSystem;
+
   void initAndBuild(Moose::MFEM::GridFunctions & gridfunctions,
                     Moose::MFEM::ComplexGridFunctions & cmplx_gridfunctions,
                     mfem::AssemblyLevel assembly_level)
@@ -418,7 +420,7 @@ TEST_F(MFEMIntegratedBCTest, RejectsOffDiagonalNonlinearIntegratedBCWhenBuilding
   auto nonlinear = addSharedObject<TestOffDiagonalNonlinearIntegratedBC>(
       "TestOffDiagonalNonlinearIntegratedBC", "nonlinear_offdiag_bc", nonlinear_params);
 
-  TestEquationSystem eqn_system;
+  TestEquationSystem eqn_system(_mfem_problem->perfGraph());
   eqn_system.AddKernel(diag_test);
   eqn_system.AddIntegratedBC(nonlinear);
   eqn_system.SetGradientRequired(true);
@@ -459,7 +461,7 @@ TEST_F(MFEMIntegratedBCTest, AcceptsLinearOffDiagonalIntegratedBCWhenBuildingEqu
   auto linear = addSharedObject<TestOffDiagonalLinearIntegratedBC>(
       "TestOffDiagonalLinearIntegratedBC", "linear_offdiag_bc", linear_params);
 
-  TestEquationSystem eqn_system;
+  TestEquationSystem eqn_system(_mfem_problem->perfGraph());
   eqn_system.AddKernel(diag_test);
   // Keep a diagonal contribution on the trial variable so this exercises the supported mixed
   // 2x2 system path rather than a case where trial_variable_name is only an eliminated coupling.

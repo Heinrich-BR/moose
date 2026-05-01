@@ -33,7 +33,7 @@ std::shared_ptr<Moose::MFEM::EquationSystem>
 MFEMTimeDependentWeakForm::makeEquationSystem()
 {
   return std::make_shared<Moose::MFEM::TimeDependentEquationSystem>(
-      getMFEMProblem().getProblemData().time_derivative_map);
+      getMFEMProblem().perfGraph(), getMFEMProblem().getProblemData().time_derivative_map);
 }
 
 #endif

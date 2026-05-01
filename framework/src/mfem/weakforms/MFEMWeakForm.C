@@ -12,6 +12,7 @@
 #include "MFEMWeakForm.h"
 #include "MFEMIntegratedBC.h"
 #include "MFEMEssentialBC.h"
+#include "MFEMProblem.h"
 
 registerMooseObject("MooseApp", MFEMWeakForm);
 
@@ -47,7 +48,7 @@ MFEMWeakForm::addKernel(const std::string & /*name*/, std::shared_ptr<MFEMKernel
 std::shared_ptr<Moose::MFEM::EquationSystem>
 MFEMWeakForm::makeEquationSystem()
 {
-  return std::make_shared<Moose::MFEM::EquationSystem>();
+  return std::make_shared<Moose::MFEM::EquationSystem>(getMFEMProblem().perfGraph());
 }
 
 #endif

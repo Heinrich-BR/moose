@@ -98,7 +98,11 @@ ProblemOperatorBase::SolveWithOperator(mfem::Operator & system_operator,
     }
 
     nonlinear_solver.SetOperator(system_operator);
-    nonlinear_solver.Mult(rhs, x);
+    {
+      TIME_SECTION("ProblemOperatorBase::SolveWithOperator::Mult", 1, "Solving MFEM system");
+      nonlinear_solver.Mult(rhs, x);
+      MFEM_DEVICE_SYNC;
+    }
   }
   // Linear solver path for linear problems.
   else
@@ -108,7 +112,11 @@ ProblemOperatorBase::SolveWithOperator(mfem::Operator & system_operator,
 
     auto & linear_solver = *_problem_data.jacobian_solver;
     linear_solver.SetOperator(linear_operator);
-    linear_solver.Mult(rhs, x);
+    {
+      TIME_SECTION("ProblemOperatorBase::SolveWithOperator::Mult", 1, "Solving MFEM system");
+      linear_solver.Mult(rhs, x);
+      MFEM_DEVICE_SYNC;
+    }
   }
 }
 

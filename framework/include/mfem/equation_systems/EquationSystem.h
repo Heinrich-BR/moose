@@ -21,6 +21,7 @@
 #include "MFEMMixedBilinearFormKernel.h"
 #include "ScaleIntegrator.h"
 #include "NLScaleIntegrator.h"
+#include "PerfGraphInterface.h"
 
 namespace Moose::MFEM
 {
@@ -41,11 +42,11 @@ class CoefficientManager;
  *
  * @see ProblemOperatorBase for the conceptual split between the two layers.
  */
-class EquationSystem : public mfem::Operator
+class EquationSystem : public mfem::Operator, public PerfGraphInterface
 {
 
 public:
-  EquationSystem() = default;
+  EquationSystem(PerfGraph & perf_graph) : PerfGraphInterface(perf_graph) {}
   ~EquationSystem() override;
 
   /// Add kernels.

@@ -115,6 +115,8 @@ public:
 class TestEquationSystem : public Moose::MFEM::EquationSystem
 {
 public:
+  using Moose::MFEM::EquationSystem::EquationSystem;
+
   void initAndBuild(Moose::MFEM::GridFunctions & gridfunctions,
                     Moose::MFEM::ComplexGridFunctions & cmplx_gridfunctions,
                     mfem::AssemblyLevel assembly_level)
@@ -366,7 +368,7 @@ TEST_F(MFEMKernelTest, RejectsOffDiagonalNonlinearKernelWhenBuildingEquationSyst
   auto nonlinear = addSharedObject<TestOffDiagonalNonlinearKernel>(
       "TestOffDiagonalNonlinearKernel", "nonlinear_offdiag", nonlinear_params);
 
-  TestEquationSystem eqn_system;
+  TestEquationSystem eqn_system(_mfem_problem->perfGraph());
   eqn_system.AddKernel(diag_test);
   eqn_system.AddKernel(nonlinear);
   eqn_system.SetGradientRequired(true);
@@ -406,7 +408,7 @@ TEST_F(MFEMKernelTest, AcceptsLinearOffDiagonalKernelWhenBuildingEquationSystem)
   auto linear = addSharedObject<TestOffDiagonalLinearKernel>(
       "TestOffDiagonalLinearKernel", "linear_offdiag", linear_params);
 
-  TestEquationSystem eqn_system;
+  TestEquationSystem eqn_system(_mfem_problem->perfGraph());
   eqn_system.AddKernel(diag_test);
   // Keep a diagonal contribution on the trial variable so this exercises the supported mixed
   // 2x2 system path rather than a case where trial_variable_name is only an eliminated coupling.
@@ -431,7 +433,7 @@ TEST_F(MFEMKernelTest, RejectsGetGradientForModernAssemblyWhenGradientIsRequired
   auto nonlinear = addSharedObject<TestDiagonalNonlinearKernel>(
       "TestDiagonalNonlinearKernel", "diag_nonlinear", nonlinear_params);
 
-  TestEquationSystem eqn_system;
+  TestEquationSystem eqn_system(_mfem_problem->perfGraph());
   eqn_system.AddKernel(linear);
   eqn_system.AddKernel(nonlinear);
   eqn_system.SetGradientRequired(true);

@@ -27,7 +27,7 @@ using EigenRHSCoefficient = std::variant<mfem::Coefficient *, mfem::MatrixCoeffi
 class EigenproblemEquationSystem : public EquationSystem
 {
 public:
-  EigenproblemEquationSystem() = default;
+  EigenproblemEquationSystem(PerfGraph & perf_graph) : EquationSystem(perf_graph) {}
   ~EigenproblemEquationSystem() override = default;
 
   /// Build eigenproblem system, with essential boundary conditions accounted for
