@@ -76,7 +76,7 @@ MFEMDataCollection::output()
   dc.SetCycle(getFileNumber());
   dc.SetTime(time());
   {
-    TIME_SECTION("MFEM::MFEMDataCollection::output::Save", 1, "Saving MFEM data collection");
+    TIME_SECTION("Save", 1, "Saving MFEM data collection");
     dc.Save();
     MFEM_DEVICE_SYNC;
   }

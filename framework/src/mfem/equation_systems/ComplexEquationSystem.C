@@ -49,13 +49,13 @@ ComplexEquationSystem::Init(GridFunctions & gridfunctions,
   _complex_gfuncs = &cmplx_gridfunctions;
 
   // Report global true DoFs (real-valued size, factor of 2 implicit for complex) on rank 0.
-  //long long total_true_dofs = 0;
-  //for (auto * pfes : _test_pfespaces)
-  //  total_true_dofs += 2 * static_cast<long long>(pfes->GlobalTrueVSize());
-  //int rank = 0;
-  //MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-  //if (rank == 0)
-  //  std::cout << "[MFEM_DOFS] total_true_dofs=" << total_true_dofs << std::endl;
+  long long total_true_dofs = 0;
+  for (auto * pfes : _test_pfespaces)
+    total_true_dofs += 2 * static_cast<long long>(pfes->GlobalTrueVSize());
+  int rank = 0;
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+  if (rank == 0)
+    std::cout << "[MFEM_DOFS] total_true_dofs=" << total_true_dofs << std::endl;
 }
 
 void
@@ -227,7 +227,7 @@ ComplexEquationSystem::FormSystemOperator(mfem::OperatorHandle & op,
 
   auto slf = _slfs.Get(test_var_name);
   {
-    TIME_SECTION("MFEM::ComplexEquationSystem::FormSystemOperator::FormLinearSystem",
+    TIME_SECTION("ComplexEquationSystem::FormSystemOperator::FormLinearSystem",
                  1,
                  "Forming MFEM complex linear system (operator)");
     slf->FormLinearSystem(_ess_tdof_lists.at(0),
@@ -273,7 +273,7 @@ ComplexEquationSystem::FormSystemMatrix(mfem::OperatorHandle & op,
 
     auto slf = _slfs.Get(test_var_name);
     {
-      TIME_SECTION("MFEM::ComplexEquationSystem::FormSystemMatrix::FormLinearSystem",
+      TIME_SECTION("ComplexEquationSystem::FormSystemMatrix::FormLinearSystem",
                    1,
                    "Forming MFEM complex linear system (diagonal block)");
       slf->FormLinearSystem(_ess_tdof_lists.at(i),

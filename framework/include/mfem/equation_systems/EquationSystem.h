@@ -34,7 +34,7 @@ class EquationSystem : public mfem::Operator, public PerfGraphInterface
 {
 
 public:
-  EquationSystem(PerfGraph & perf_graph) : PerfGraphInterface(perf_graph) {}
+  EquationSystem(PerfGraph & perf_graph) : PerfGraphInterface(perf_graph, "MFEM") {}
   ~EquationSystem() override;
 
   /// Add kernels.

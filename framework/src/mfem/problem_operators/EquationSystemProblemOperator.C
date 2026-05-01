@@ -35,7 +35,7 @@ EquationSystemProblemOperator::Solve()
   _problem_data.nonlinear_solver->SetPreconditioner(_problem_data.jacobian_solver->getSolver());
   _problem_data.nonlinear_solver->SetOperator(*GetEquationSystem());
   {
-    TIME_SECTION("MFEM::EquationSystemProblemOperator::Solve::Mult", 1, "Solving MFEM system");
+    TIME_SECTION("EquationSystemProblemOperator::Solve::Mult", 1, "Solving MFEM system");
     _problem_data.nonlinear_solver->Mult(_true_rhs, _true_x);
     MFEM_DEVICE_SYNC;
   }

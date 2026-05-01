@@ -202,13 +202,13 @@ EquationSystem::Init(Moose::MFEM::GridFunctions & gridfunctions,
   _gfuncs = &gridfunctions;
 
   // Report global true DoFs in a bash-parseable form (rank 0 only).
-  //long long total_true_dofs = 0;
-  //for (auto * pfes : _test_pfespaces)
-  //  total_true_dofs += static_cast<long long>(pfes->GlobalTrueVSize());
-  //int rank = 0;
-  //MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-  //if (rank == 0)
-  //  std::cout << "[MFEM_DOFS] total_true_dofs=" << total_true_dofs << std::endl;
+  long long total_true_dofs = 0;
+  for (auto * pfes : _test_pfespaces)
+    total_true_dofs += static_cast<long long>(pfes->GlobalTrueVSize());
+  int rank = 0;
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+  if (rank == 0)
+    std::cout << "[MFEM_DOFS] total_true_dofs=" << total_true_dofs << std::endl;
 }
 
 void
@@ -298,7 +298,7 @@ EquationSystem::FormSystemOperator(mfem::OperatorHandle & op,
 
   auto blf = _blfs.Get(test_var_name);
   {
-    TIME_SECTION("MFEM::EquationSystem::FormSystemOperator::FormLinearSystem",
+    TIME_SECTION("EquationSystem::FormSystemOperator::FormLinearSystem",
                  1,
                  "Forming MFEM linear system (operator)");
     blf->FormLinearSystem(_ess_tdof_lists.at(0),
@@ -350,7 +350,7 @@ EquationSystem::FormSystemMatrix(mfem::OperatorHandle & op,
         mooseAssert(i == j, "Trial and test variables must have the same ordering.");
         auto blf = _blfs.Get(test_var_name);
         {
-          TIME_SECTION("MFEM::EquationSystem::FormSystemMatrix::FormLinearSystem",
+          TIME_SECTION("EquationSystem::FormSystemMatrix::FormLinearSystem",
                        1,
                        "Forming MFEM linear system (diagonal block)");
           blf->FormLinearSystem(_ess_tdof_lists.at(j),
@@ -368,7 +368,7 @@ EquationSystem::FormSystemMatrix(mfem::OperatorHandle & op,
       {
         auto mblf = _mblfs.Get(test_var_name)->Get(trial_var_name);
         {
-          TIME_SECTION("MFEM::EquationSystem::FormSystemMatrix::FormRectangularLinearSystem",
+          TIME_SECTION("EquationSystem::FormSystemMatrix::FormRectangularLinearSystem",
                        1,
                        "Forming MFEM linear system (off-diagonal block)");
           mblf->FormRectangularLinearSystem(_ess_tdof_lists.at(j),
