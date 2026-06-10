@@ -59,7 +59,12 @@ ComplexEquationSystemProblemOperator::Solve()
 
   _problem_data.nonlinear_solver->SetPreconditioner(_problem_data.jacobian_solver->getSolver());
   _problem_data.nonlinear_solver->SetOperator(*GetEquationSystem());
-  _problem_data.nonlinear_solver->Mult(_true_rhs, _true_x);
+  {
+    TIME_SECTION(
+        "ComplexEquationSystemProblemOperator::Solve::Mult", 1, "Solving MFEM system");
+    _problem_data.nonlinear_solver->Mult(_true_rhs, _true_x);
+    MFEM_DEVICE_SYNC;
+  }
 
   GetEquationSystem()->SetTrialVariablesFromTrueVectors(_true_x);
 }

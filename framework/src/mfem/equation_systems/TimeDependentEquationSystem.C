@@ -52,6 +52,9 @@ TimeDependentEquationSystem::AddKernel(std::shared_ptr<MFEMKernel> kernel)
 void
 TimeDependentEquationSystem::BuildBilinearForms()
 {
+  TIME_SECTION(
+      "TimeDependentEquationSystem::BuildBilinearForms", 1, "Assembling MFEM bilinear forms");
+
   // Register bilinear forms
   for (const auto i : index_range(_test_var_names))
   {
@@ -81,6 +84,7 @@ TimeDependentEquationSystem::BuildBilinearForms()
     // Assemble
     td_blf->Assemble();
   }
+  MFEM_DEVICE_SYNC;
 }
 
 void
