@@ -79,12 +79,12 @@ LOG_NAME_RE = re.compile(
 # Devices to ignore entirely when collecting logs.
 SKIP_DEVICES = {"ceed-cpu", "ceed-hip"}
 
-# Polynomial order -> color (primary categorical dimension).
+# Polynomial order -> color (primary categorical dimension, Tableau palette).
 ORDER_COLORS = {
-    1: "red",
-    2: "orange",
-    3: "green",
-    4: "blue",
+    1: "tab:red",
+    2: "tab:orange",
+    3: "tab:green",
+    4: "tab:blue",
 }
 # Device -> linestyle (second categorical dimension).
 DEVICE_LINESTYLES = {
