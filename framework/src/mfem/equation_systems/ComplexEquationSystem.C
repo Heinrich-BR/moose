@@ -99,6 +99,8 @@ ComplexEquationSystem::BuildLinearForms()
 void
 ComplexEquationSystem::BuildBilinearForms()
 {
+  TIME_SECTION("ComplexEquationSystem::BuildBilinearForms", 1, "Assembling MFEM sesquilinear forms");
+
   // Register bilinear forms
   for (const auto i : index_range(_test_var_names))
   {
@@ -117,6 +119,7 @@ ComplexEquationSystem::BuildBilinearForms()
     slf->Assemble();
     slf->Finalize();
   }
+  MFEM_DEVICE_SYNC;
 }
 
 void

@@ -7,8 +7,11 @@ Each log must contain:
   - a [MFEM_DOFS] total_true_dofs=N line (added in EquationSystem::Init / ComplexEquationSystem::Init)
   - a Performance Graph table from Outputs/perf_graph=true
 
-For each example, one PNG is written into the results directory with one
-loglog curve per timed section that fired during that run.
+For each example, several PNGs are written into the results directory. Timed
+sections are bucketed into three logical groups, "BuildBilinearForms",
+"FormLinearSystem" and "Mult", and for each group (plus their sum) both a
+raw-time plot and a per-DoF plot are produced. Within a plot, color denotes the
+polynomial order, linestyle the device and marker the assembly level.
 """
 
 import re
@@ -20,53 +23,96 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-# Registered section name (regex)  ->  short label used in the legend.
-# The prefix "MFEM::" comes from PerfGraphInterface(perf_graph, "MFEM") /
-# PerfGraphInterface(&problem, "MFEM"). Save lives in MFEMDataCollection-derived
-# MooseObjects, whose prefix is the registered type name.
-SECTIONS = [
-    (re.compile(r"^MFEM::EquationSystemProblemOperator::Solve::Mult$"),
-     "Mult (steady)"),
-    (re.compile(r"^MFEM::TimeDependentEquationSystemProblemOperator::ImplicitSolve::Mult$"),
-     "Mult (transient)"),
-    (re.compile(r"^MFEM::EquationSystem::FormSystemOperator::FormLinearSystem$"),
-     "FormLinearSystem (op)"),
-    (re.compile(r"^MFEM::EquationSystem::FormSystemMatrix::FormLinearSystem$"),
-     "FormLinearSystem (diag)"),
-    (re.compile(r"^MFEM::EquationSystem::FormSystemMatrix::FormRectangularLinearSystem$"),
-     "FormRectangularLinearSystem"),
-    (re.compile(r"^MFEM::ComplexEquationSystem::FormSystemOperator::FormLinearSystem$"),
-     "FormLinearSystem (cmplx op)"),
-    (re.compile(r"^MFEM::ComplexEquationSystem::FormSystemMatrix::FormLinearSystem$"),
-     "FormLinearSystem (cmplx diag)"),
-    (re.compile(r"^MFEM\w*DataCollection::Save$"),
-     "Save"),
+# Timed PerfGraph sections are bucketed into logical groups. The prefix "MFEM::"
+# comes from PerfGraphInterface(perf_graph, "MFEM") / PerfGraphInterface(&problem,
+# "MFEM"). Within a single run at most one pattern per group fires (the op/diag and
+# steady/transient code paths are mutually exclusive and never co-occur), so a
+# run's group time is just the sum of whatever matched.
+SECTION_GROUPS = {
+    # Local (bi/sesqui)linear form assembly: steady, transient and complex paths
+    # each have their own BuildBilinearForms override; only one fires per run.
+    "BuildBilinearForms": [
+        re.compile(r"^MFEM::EquationSystem::BuildBilinearForms$"),
+        re.compile(r"^MFEM::TimeDependentEquationSystem::BuildBilinearForms$"),
+        re.compile(r"^MFEM::ComplexEquationSystem::BuildBilinearForms$"),
+    ],
+    # FormSystemOperator (non-legacy) and FormSystemMatrix (legacy diagonal block)
+    # are different paths representing the same work; real and complex are folded
+    # together too since each example is either real or complex, never both.
+    "FormLinearSystem": [
+        re.compile(r"^MFEM::EquationSystem::FormSystemOperator::FormLinearSystem$"),
+        re.compile(r"^MFEM::EquationSystem::FormSystemMatrix::FormLinearSystem$"),
+        re.compile(r"^MFEM::ComplexEquationSystem::FormSystemOperator::FormLinearSystem$"),
+        re.compile(r"^MFEM::ComplexEquationSystem::FormSystemMatrix::FormLinearSystem$"),
+    ],
+    # Steady (Solve), transient (ImplicitSolve) and complex (Solve) residual
+    # evaluations folded into one "Mult" group.
+    "Mult": [
+        re.compile(r"^MFEM::EquationSystemProblemOperator::Solve::Mult$"),
+        re.compile(r"^MFEM::TimeDependentEquationSystemProblemOperator::ImplicitSolve::Mult$"),
+        re.compile(r"^MFEM::ComplexEquationSystemProblemOperator::Solve::Mult$"),
+    ],
+}
+
+# One output plot per entry: (title label, group(s) summed for the y value,
+# filename slug). For multi-group kinds a run contributes a point only if every
+# listed group fired in that run.
+PLOT_KINDS = [
+    ("BuildBilinearForms", ["BuildBilinearForms"], "buildbilinearforms"),
+    ("FormLinearSystem", ["FormLinearSystem"], "formlinearsystem"),
+    ("Mult", ["Mult"], "mult"),
+    (
+        "BuildBilinearForms + FormLinearSystem + Mult",
+        ["BuildBilinearForms", "FormLinearSystem", "Mult"],
+        "total",
+    ),
 ]
 
 DOFS_RE = re.compile(r"\[MFEM_DOFS\]\s+total_true_dofs=(\d+)")
+# The _p<P> order component is optional for backward compatibility with logs
+# produced before the polynomial-order sweep was added; such logs are order 1.
 LOG_NAME_RE = re.compile(
-    r"^(?P<tag>[A-Za-z0-9]+)_(?P<device>[A-Za-z0-9-]+)_r(?P<r>\d+)\.log$"
+    r"^(?P<tag>[A-Za-z0-9]+)_(?P<device>[A-Za-z0-9-]+)_(?P<asm>[A-Za-z]+)"
+    r"(?:_p(?P<p>\d+))?_r(?P<r>\d+)\.log$"
 )
 
-# Per-device line style. Marker varies too so devices stay distinguishable
-# when printed in greyscale.
-DEVICE_STYLES = {
-    "cpu":      {"linestyle": "-",  "marker": "o"},
-    "ceed-cpu": {"linestyle": "-.", "marker": "D"},
-    "hip":      {"linestyle": "--", "marker": "s"},
-    "ceed-hip": {"linestyle": ":",  "marker": "^"},
+# Devices to ignore entirely when collecting logs.
+SKIP_DEVICES = {"ceed-cpu", "ceed-hip"}
+
+# Polynomial order -> color (primary categorical dimension).
+ORDER_COLORS = {
+    1: "red",
+    2: "orange",
+    3: "green",
+    4: "blue",
 }
-DEFAULT_STYLE = {"linestyle": (0, (3, 1, 1, 1, 1, 1)), "marker": "x"}
+# Device -> linestyle (second categorical dimension).
+DEVICE_LINESTYLES = {
+    "cpu":      "-",
+    "hip":      "--",
+}
+DEFAULT_COLOR = "black"
+DEFAULT_LINESTYLE = (0, (3, 1, 1, 1, 1, 1))
+
+# Per-assembly-level marker (third categorical dimension).
+ASSEMBLY_MARKERS = {
+    "legacy":  "o",
+    "full":    "s",
+    "partial": "^",
+    "none":    "D",
+}
+DEFAULT_MARKER = "x"
 
 
 def parse_log(path: Path):
-    """Return (dofs, {section_name: total_seconds}) parsed from one log file."""
+    """Return (dofs, {group_name: total_seconds}) parsed from one log file."""
     text = path.read_text(errors="replace")
 
     dofs_match = DOFS_RE.search(text)
     dofs = int(dofs_match.group(1)) if dofs_match else None
 
-    timings: dict[str, float] = {}
+    group_times: dict[str, float] = {}
+    seen: set[str] = set()
     # The full PerfGraph tree table has 10 columns:
     #   Section | Calls | Self(s) | Avg(s) | % | Mem | Total(s) | Avg(s) | % | Mem
     # After splitting on '|', total time is at index 7 (index 0 is empty before
@@ -79,130 +125,166 @@ def parse_log(path: Path):
         if len(parts) != 12:  # tree table only
             continue
         section_name = parts[1]
-        label = None
-        for pattern, lbl in SECTIONS:
-            if pattern.match(section_name):
-                label = lbl
+        if section_name in seen:  # tree table prints each section once; first wins
+            continue
+        group = None
+        for gname, patterns in SECTION_GROUPS.items():
+            if any(p.match(section_name) for p in patterns):
+                group = gname
                 break
-        if label is None:
+        if group is None:
             continue
         try:
             total_s = float(parts[7])
         except ValueError:
             continue
-        # Tree table prints each section once; first hit wins.
-        timings.setdefault(label, total_s)
-    return dofs, timings
+        seen.add(section_name)
+        group_times[group] = group_times.get(group, 0.0) + total_s
+    return dofs, group_times
 
 
 def collect(results_dir: Path):
-    """Group runs by (example tag, device).
-    Returns {tag: {device: [(refinement, dofs, timings), ...]}}.
+    """Group runs by (example tag, (device, assembly, order)).
+    Returns {tag: {(device, assembly, order): [(refinement, dofs, group_times), ...]}}.
     """
-    runs: dict[str, dict[str, list[tuple[int, int, dict[str, float]]]]] = {}
+    runs: dict[
+        str, dict[tuple[str, str, int], list[tuple[int, int, dict[str, float]]]]
+    ] = {}
     for log in sorted(results_dir.glob("*.log")):
         m = LOG_NAME_RE.match(log.name)
         if not m:
             continue
         tag = m.group("tag")
-        device = m.group("device")
+        if m.group("device") in SKIP_DEVICES:
+            continue
+        order = int(m.group("p")) if m.group("p") else 1
+        key = (m.group("device"), m.group("asm"), order)
         refinement = int(m.group("r"))
-        dofs, timings = parse_log(log)
+        dofs, group_times = parse_log(log)
         if dofs is None:
             print(f"  warning: {log.name} has no [MFEM_DOFS] line — skipped")
             continue
-        if not timings:
+        if not group_times:
             print(f"  warning: {log.name} has no MFEM timer rows — skipped")
             continue
-        runs.setdefault(tag, {}).setdefault(device, []).append(
-            (refinement, dofs, timings)
+        runs.setdefault(tag, {}).setdefault(key, []).append(
+            (refinement, dofs, group_times)
         )
     for tag in runs:
-        for device in runs[tag]:
-            runs[tag][device].sort()
+        for key in runs[tag]:
+            runs[tag][key].sort()
     return runs
 
 
-def plot_example(tag: str, by_device, out_path: Path):
-    """`by_device` is {device: [(refinement, dofs, timings), ...]}."""
+def kind_value(group_times: dict[str, float], components: list[str]):
+    """Sum the named groups for one run, or None if any is missing/non-positive."""
+    vals = [group_times.get(g) for g in components]
+    if any(v is None or v <= 0 for v in vals):
+        return None
+    return sum(vals)
+
+
+def plot_kind(tag: str, by_run, kind_label: str, components, out_path: Path,
+              normalize: bool = False):
+    """Plot one section-kind for one example.
+
+    `by_run` is {(device, assembly, order): [(refinement, dofs, group_times), ...]}.
+    `components` lists which section groups are summed for the y value. If
+    `normalize` is True, the y-axis is divided by the global number of true DoFs.
+    """
     fig, ax = plt.subplots(figsize=(9, 6.5))
 
-    # One color per section label, shared across devices, taken from matplotlib's
-    # default property cycle. Only sections that have data get a color so the
-    # legend stays compact.
-    used_labels: list[str] = []
-    for _, label in SECTIONS:
-        for runs in by_device.values():
-            if any(label in t for _r, _d, t in runs):
-                used_labels.append(label)
-                break
-    color_cycle = plt.rcParams["axes.prop_cycle"].by_key()["color"]
-    section_color = {
-        label: color_cycle[i % len(color_cycle)]
-        for i, label in enumerate(used_labels)
-    }
-
-    plotted_any = False
-    # Stable device order: known devices first, then any extras alphabetically.
-    devices_present = sorted(
-        by_device.keys(),
-        key=lambda d: (list(DEVICE_STYLES).index(d) if d in DEVICE_STYLES else 99, d),
+    # Stable order: known orders first, then devices, then assembly levels.
+    keys_present = sorted(
+        by_run.keys(),
+        key=lambda k: (
+            list(ORDER_COLORS).index(k[2]) if k[2] in ORDER_COLORS else 99,
+            list(DEVICE_LINESTYLES).index(k[0]) if k[0] in DEVICE_LINESTYLES else 99,
+            list(ASSEMBLY_MARKERS).index(k[1]) if k[1] in ASSEMBLY_MARKERS else 99,
+            k,
+        ),
     )
 
-    for device in devices_present:
-        style = DEVICE_STYLES.get(device, DEFAULT_STYLE)
-        runs = by_device[device]
-        for label in used_labels:
-            xs, ys = [], []
-            for _r, dofs, timings in runs:
-                t = timings.get(label)
-                if t is None or t <= 0:
-                    continue
-                xs.append(dofs)
-                ys.append(t)
-            if not xs:
+    plotted_any = False
+    for device, asm, order in keys_present:
+        color = ORDER_COLORS.get(order, DEFAULT_COLOR)
+        linestyle = DEVICE_LINESTYLES.get(device, DEFAULT_LINESTYLE)
+        marker = ASSEMBLY_MARKERS.get(asm, DEFAULT_MARKER)
+        xs, ys = [], []
+        for _r, dofs, group_times in by_run[(device, asm, order)]:
+            v = kind_value(group_times, components)
+            if v is None:
                 continue
-            ax.loglog(
-                xs,
-                ys,
-                color=section_color[label],
-                linestyle=style["linestyle"],
-                marker=style["marker"],
-            )
-            plotted_any = True
+            xs.append(dofs)
+            ys.append(v / dofs if normalize else v)
+        if not xs:
+            continue
+        ax.loglog(xs, ys, color=color, linestyle=linestyle, marker=marker)
+        plotted_any = True
 
     if not plotted_any:
-        print(f"  {tag}: no usable timing data — skipping plot")
+        print(f"  {tag} [{kind_label}]: no usable timing data — skipping plot")
         plt.close(fig)
         return
 
-    # Two-part legend: section -> color, device -> linestyle.
+    # Three-part legend: order -> color, device -> linestyle, assembly -> marker.
     from matplotlib.lines import Line2D
 
-    section_handles = [
-        Line2D([0], [0], color=section_color[label], linestyle="-", marker="o", label=label)
-        for label in used_labels
+    orders_present = [p for p in ORDER_COLORS if any(k[2] == p for k in keys_present)]
+    orders_present += sorted({k[2] for k in keys_present} - set(orders_present))
+    devices_present = [d for d in DEVICE_LINESTYLES if any(k[0] == d for k in keys_present)]
+    devices_present += sorted({k[0] for k in keys_present} - set(devices_present))
+    assemblies_present = [a for a in ASSEMBLY_MARKERS if any(k[1] == a for k in keys_present)]
+    assemblies_present += sorted({k[1] for k in keys_present} - set(assemblies_present))
+
+    order_handles = [
+        Line2D(
+            [0],
+            [0],
+            color=ORDER_COLORS.get(p, DEFAULT_COLOR),
+            linestyle="-",
+            label=f"p={p}",
+        )
+        for p in orders_present
     ]
     device_handles = [
         Line2D(
             [0],
             [0],
             color="black",
-            linestyle=DEVICE_STYLES.get(d, DEFAULT_STYLE)["linestyle"],
-            marker=DEVICE_STYLES.get(d, DEFAULT_STYLE)["marker"],
+            linestyle=DEVICE_LINESTYLES.get(d, DEFAULT_LINESTYLE),
             label=d,
         )
         for d in devices_present
     ]
-    section_legend = ax.legend(
-        handles=section_handles, title="Section", loc="upper left", fontsize=9
+    assembly_handles = [
+        Line2D(
+            [0],
+            [0],
+            color="black",
+            linestyle="none",
+            marker=ASSEMBLY_MARKERS.get(a, DEFAULT_MARKER),
+            label=a,
+        )
+        for a in assemblies_present
+    ]
+    order_legend = ax.legend(
+        handles=order_handles, title="Order", loc="upper left", fontsize=9
     )
-    ax.add_artist(section_legend)
-    ax.legend(handles=device_handles, title="Device", loc="lower right", fontsize=9)
+    ax.add_artist(order_legend)
+    device_legend = ax.legend(
+        handles=device_handles, title="Device", loc="lower left", fontsize=9
+    )
+    ax.add_artist(device_legend)
+    ax.legend(handles=assembly_handles, title="Assembly", loc="lower right", fontsize=9)
 
     ax.set_xlabel("Number of true DoFs")
-    ax.set_ylabel("Cumulative time [s]")
-    ax.set_title(f"{tag}: MFEM section timing vs. DoFs")
+    if normalize:
+        ax.set_ylabel(f"Cumulative time per DoF [s/DoF]")
+        ax.set_title(f"{tag}: {kind_label} time per DoF")
+    else:
+        ax.set_ylabel(f"Cumulative time [s]")
+        ax.set_title(f"{tag}: {kind_label} time")
     ax.grid(True, which="both", linestyle="--", alpha=0.3)
     fig.tight_layout()
     fig.savefig(out_path, dpi=150)
@@ -224,8 +306,17 @@ def main():
         print("No usable logs found.", file=sys.stderr)
         sys.exit(1)
 
-    for tag, by_device in runs.items():
-        plot_example(tag, by_device, results_dir / f"{tag}_timings.png")
+    for tag, by_run in runs.items():
+        for kind_label, components, slug in PLOT_KINDS:
+            plot_kind(
+                tag, by_run, kind_label, components,
+                results_dir / f"{tag}_{slug}_timings.png",
+            )
+            plot_kind(
+                tag, by_run, kind_label, components,
+                results_dir / f"{tag}_{slug}_timings_per_dof.png",
+                normalize=True,
+            )
 
 
 if __name__ == "__main__":

@@ -543,6 +543,8 @@ EquationSystem::BuildNonlinearForms()
 void
 EquationSystem::BuildBilinearForms()
 {
+  TIME_SECTION("EquationSystem::BuildBilinearForms", 1, "Assembling MFEM bilinear forms");
+
   // Register bilinear forms
   for (const auto i : index_range(_test_var_names))
   {
@@ -560,6 +562,7 @@ EquationSystem::BuildBilinearForms()
     blf->Assemble();
     blf->Finalize();
   }
+  MFEM_DEVICE_SYNC;
 }
 
 void
