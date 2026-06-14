@@ -12,6 +12,12 @@ sections are bucketed into three logical groups, "BuildBilinearForms",
 "FormLinearSystem" and "Mult", and for each group (plus their sum) both a
 raw-time plot and a per-DoF plot are produced. Within a plot, color denotes the
 polynomial order, linestyle the device and marker the assembly level.
+
+An optional second argument "<cpu_ranks>,<hip_ranks>" restricts the plots to a
+single MPI-rank count per hardware family, so a CPU run at one rank count can be
+compared against a GPU run at another. For example "32,4" keeps only cpu/ceed-cpu
+logs with np=32 and hip/ceed-hip logs with np=4. The chosen counts are appended
+to the device legend labels and the output filenames.
 """
 
 import re
@@ -69,11 +75,13 @@ PLOT_KINDS = [
 ]
 
 DOFS_RE = re.compile(r"\[MFEM_DOFS\]\s+total_true_dofs=(\d+)")
-# The _p<P> order component is optional for backward compatibility with logs
-# produced before the polynomial-order sweep was added; such logs are order 1.
+# The _p<P> order and _n<R> MPI-rank components are optional for backward
+# compatibility with logs produced before those sweeps were added; such logs are
+# treated as order 1. Rank count is parsed but not currently a plotting
+# dimension, so mixing rank counts in one results dir overlays them.
 LOG_NAME_RE = re.compile(
     r"^(?P<tag>[A-Za-z0-9]+)_(?P<device>[A-Za-z0-9-]+)_(?P<asm>[A-Za-z]+)"
-    r"(?:_p(?P<p>\d+))?_r(?P<r>\d+)\.log$"
+    r"(?:_p(?P<p>\d+))?(?:_n(?P<n>\d+))?_r(?P<r>\d+)\.log$"
 )
 
 # Devices to ignore entirely when collecting logs.
@@ -93,6 +101,11 @@ DEVICE_LINESTYLES = {
 }
 DEFAULT_COLOR = "black"
 DEFAULT_LINESTYLE = (0, (3, 1, 1, 1, 1, 1))
+
+
+def device_family(device: str) -> str:
+    """Map a device name to its hardware family, 'cpu' or 'hip'."""
+    return "hip" if device in ("hip", "ceed-hip") else "cpu"
 
 # Per-assembly-level marker (third categorical dimension).
 ASSEMBLY_MARKERS = {
@@ -143,9 +156,12 @@ def parse_log(path: Path):
     return dofs, group_times
 
 
-def collect(results_dir: Path):
+def collect(results_dir: Path, rank_filter: dict[str, int] | None = None):
     """Group runs by (example tag, (device, assembly, order)).
     Returns {tag: {(device, assembly, order): [(refinement, dofs, group_times), ...]}}.
+
+    If `rank_filter` is given (a {family: rank_count} mapping), only logs whose
+    MPI-rank count matches the requirement for their device family are kept.
     """
     runs: dict[
         str, dict[tuple[str, str, int], list[tuple[int, int, dict[str, float]]]]
@@ -155,10 +171,14 @@ def collect(results_dir: Path):
         if not m:
             continue
         tag = m.group("tag")
-        if m.group("device") in SKIP_DEVICES:
+        device = m.group("device")
+        if device in SKIP_DEVICES:
+            continue
+        ranks = int(m.group("n")) if m.group("n") else None
+        if rank_filter is not None and ranks != rank_filter[device_family(device)]:
             continue
         order = int(m.group("p")) if m.group("p") else 1
-        key = (m.group("device"), m.group("asm"), order)
+        key = (device, m.group("asm"), order)
         refinement = int(m.group("r"))
         dofs, group_times = parse_log(log)
         if dofs is None:
@@ -185,12 +205,14 @@ def kind_value(group_times: dict[str, float], components: list[str]):
 
 
 def plot_kind(tag: str, by_run, kind_label: str, components, out_path: Path,
-              normalize: bool = False):
+              normalize: bool = False, rank_filter: dict[str, int] | None = None):
     """Plot one section-kind for one example.
 
     `by_run` is {(device, assembly, order): [(refinement, dofs, group_times), ...]}.
     `components` lists which section groups are summed for the y value. If
     `normalize` is True, the y-axis is divided by the global number of true DoFs.
+    If `rank_filter` is given, the per-family rank counts are shown in the device
+    legend labels.
     """
     fig, ax = plt.subplots(figsize=(9, 6.5))
 
@@ -253,7 +275,7 @@ def plot_kind(tag: str, by_run, kind_label: str, components, out_path: Path,
             [0],
             color="black",
             linestyle=DEVICE_LINESTYLES.get(d, DEFAULT_LINESTYLE),
-            label=d,
+            label=(f"{d} (np={rank_filter[device_family(d)]})" if rank_filter else d),
         )
         for d in devices_present
     ]
@@ -293,15 +315,29 @@ def plot_kind(tag: str, by_run, kind_label: str, components, out_path: Path,
 
 
 def main():
-    if len(sys.argv) != 2:
-        print(f"Usage: {sys.argv[0]} <results_dir>", file=sys.stderr)
+    if len(sys.argv) not in (2, 3):
+        print(f"Usage: {sys.argv[0]} <results_dir> [cpu_ranks,hip_ranks]", file=sys.stderr)
         sys.exit(1)
     results_dir = Path(sys.argv[1])
     if not results_dir.is_dir():
         print(f"Not a directory: {results_dir}", file=sys.stderr)
         sys.exit(1)
 
-    runs = collect(results_dir)
+    rank_filter = None
+    suffix = ""
+    if len(sys.argv) == 3:
+        try:
+            cpu_ranks, hip_ranks = (int(x) for x in sys.argv[2].split(","))
+        except ValueError:
+            print(
+                f"Invalid rank pair '{sys.argv[2]}': expected <cpu_ranks>,<hip_ranks>",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        rank_filter = {"cpu": cpu_ranks, "hip": hip_ranks}
+        suffix = f"_cpu{cpu_ranks}_hip{hip_ranks}"
+
+    runs = collect(results_dir, rank_filter)
     if not runs:
         print("No usable logs found.", file=sys.stderr)
         sys.exit(1)
@@ -310,12 +346,13 @@ def main():
         for kind_label, components, slug in PLOT_KINDS:
             plot_kind(
                 tag, by_run, kind_label, components,
-                results_dir / f"{tag}_{slug}_timings.png",
+                results_dir / f"{tag}_{slug}_timings{suffix}.png",
+                rank_filter=rank_filter,
             )
             plot_kind(
                 tag, by_run, kind_label, components,
-                results_dir / f"{tag}_{slug}_timings_per_dof.png",
-                normalize=True,
+                results_dir / f"{tag}_{slug}_timings_per_dof{suffix}.png",
+                normalize=True, rank_filter=rank_filter,
             )
 
 
