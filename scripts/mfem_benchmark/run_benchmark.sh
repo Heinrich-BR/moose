@@ -18,9 +18,12 @@
 #   MAX_ITS        — Krylov iteration cap (Solver/l_max_its) applied to every
 #                    iterative-solver run (default: 100000)
 #   ORDERS         — space-separated list of polynomial orders (default: "1 2 3 4")
+#   RANKS          — space-separated list of MPI rank counts to run (default: "1")
+#   MPI_LAUNCHER   — launcher prefix to which the rank count is appended
+#                    (default: "srun -n"; use e.g. "mpirun -np" off SLURM)
 #
 # After completion, results_dir contains:
-#   <example>_<device>_<assembly>_p<P>_r<N>.log — raw stdout of each run
+#   <example>_<device>_<assembly>_p<P>_n<R>_r<N>.log — raw stdout of each run
 #   <example>_timings.png         — log-log timing plot per example
 #                                    (one curve per section × device × assembly)
 
@@ -36,6 +39,12 @@ DEVICES="${DEVICES:-cpu ceed-cpu hip ceed-hip}"
 ASSEMBLY_LEVELS="${ASSEMBLY_LEVELS:-legacy full partial none}"
 MAX_ITS="${MAX_ITS:-100000}"
 ORDERS="${ORDERS:-1 2 3 4}"
+RANKS="${RANKS:-1}"
+MPI_LAUNCHER="${MPI_LAUNCHER:-srun -n}"
+
+# Split the launcher prefix into words so e.g. "srun -n" stays two tokens; the
+# rank count and executable are appended per run below.
+read -ra LAUNCHER <<< "$MPI_LAUNCHER"
 
 if [[ ! -x "$MOOSE_EXEC" ]]; then
   echo "ERROR: $MOOSE_EXEC not executable. Set MOOSE_EXEC to the right binary." >&2
@@ -126,21 +135,23 @@ for entry in "${EXAMPLES[@]}"; do
     for asm in $ASSEMBLY_LEVELS; do
       for p in $ORDERS; do
         order_args "$tag" "$p"
-        for r in $REFINEMENTS; do
-          log="$RESULTS_DIR/${tag}_${device}_${asm}_p${p}_r${r}.log"
-          echo ">>> $tag  device=$device  assembly=$asm  order=$p  serial_refine=$r"
-          if ! "$MOOSE_EXEC" -i "$inp" \
-              Mesh/serial_refine="$r" \
-              Executioner/device="$device" \
-              Executioner/assembly_level="$asm" \
-              "${ORDER_ARGS[@]}" \
-              "${SOLVER_ARGS[@]}" \
-              Outputs/perf_graph=true \
-              > "$log" 2>&1
-          then
-            echo "    FAILED — see $log"
-            failures+=("$tag device=$device assembly=$asm p=$p r=$r")
-          fi
+        for ranks in $RANKS; do
+          for r in $REFINEMENTS; do
+            log="$RESULTS_DIR/${tag}_${device}_${asm}_p${p}_n${ranks}_r${r}.log"
+            echo ">>> $tag  device=$device  assembly=$asm  order=$p  ranks=$ranks  serial_refine=$r"
+            if ! "${LAUNCHER[@]}" "$ranks" "$MOOSE_EXEC" -i "$inp" \
+                Mesh/serial_refine="$r" \
+                Executioner/device="$device" \
+                Executioner/assembly_level="$asm" \
+                "${ORDER_ARGS[@]}" \
+                "${SOLVER_ARGS[@]}" \
+                Outputs/perf_graph=true \
+                > "$log" 2>&1
+            then
+              echo "    FAILED — see $log"
+              failures+=("$tag device=$device assembly=$asm p=$p ranks=$ranks r=$r")
+            fi
+          done
         done
       done
     done
