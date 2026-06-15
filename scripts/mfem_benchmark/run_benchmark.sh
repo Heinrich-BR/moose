@@ -21,6 +21,9 @@
 #   RANKS          — space-separated list of MPI rank counts to run (default: "1")
 #   MPI_LAUNCHER   — launcher prefix to which the rank count is appended
 #                    (default: "srun -n"; use e.g. "mpirun -np" off SLURM)
+#   TIMEOUT        — per-run wall-clock limit in seconds; a run exceeding it is
+#                    cancelled and all higher refinement levels for the same
+#                    parameters are skipped (default: 600)
 #
 # After completion, results_dir contains:
 #   <example>_<device>_<assembly>_p<P>_n<R>_r<N>.log — raw stdout of each run
@@ -41,6 +44,7 @@ MAX_ITS="${MAX_ITS:-100000}"
 ORDERS="${ORDERS:-1 2 3 4}"
 RANKS="${RANKS:-1}"
 MPI_LAUNCHER="${MPI_LAUNCHER:-mpirun -n}"
+TIMEOUT="${TIMEOUT:-600}"
 
 # Split the launcher prefix into words so e.g. "srun -n" stays two tokens; the
 # rank count and executable are appended per run below.
@@ -139,7 +143,10 @@ for entry in "${EXAMPLES[@]}"; do
           for r in $REFINEMENTS; do
             log="$RESULTS_DIR/${tag}_${device}_${asm}_p${p}_n${ranks}_r${r}.log"
             echo ">>> $tag  device=$device  assembly=$asm  order=$p  ranks=$ranks  serial_refine=$r"
-            if ! "${LAUNCHER[@]}" "$ranks" "$MOOSE_EXEC" -i "$inp" \
+            # --kill-after sends SIGKILL if the launcher ignores the initial
+            # SIGTERM (e.g. a hung GPU job) so a stuck run cannot wedge the sweep.
+            timeout --kill-after=30s "$TIMEOUT" \
+                "${LAUNCHER[@]}" "$ranks" "$MOOSE_EXEC" -i "$inp" \
                 Mesh/serial_refine="$r" \
                 Executioner/device="$device" \
                 Executioner/assembly_level="$asm" \
@@ -147,7 +154,15 @@ for entry in "${EXAMPLES[@]}"; do
                 "${SOLVER_ARGS[@]}" \
                 Outputs/perf_graph=true \
                 > "$log" 2>&1
-            then
+            status=$?
+            if (( status == 124 )); then
+              # timeout(1) exits 124 when the limit is hit. Refinement levels run
+              # in ascending order, so every higher level for this same case would
+              # be larger and time out too — skip them by breaking the r loop.
+              echo "    TIMED OUT (>${TIMEOUT}s) — skipping higher refinement levels for this case"
+              failures+=("$tag device=$device assembly=$asm p=$p ranks=$ranks r=$r (timeout)")
+              break
+            elif (( status != 0 )); then
               echo "    FAILED — see $log"
               failures+=("$tag device=$device assembly=$asm p=$p ranks=$ranks r=$r")
             fi
