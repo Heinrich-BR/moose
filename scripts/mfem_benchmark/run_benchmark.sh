@@ -30,17 +30,17 @@
 set -uo pipefail
 
 SCRIPT_DIR=/home/dc-roch1/moose_hip/moose/scripts/mfem_benchmark
-MOOSE_ROOT=/home/dc-roch1/moose_hip
+MOOSE_ROOT=/home/dc-roch1/moose_hip/moose
 MOOSE_EXEC="${MOOSE_EXEC:-$MOOSE_ROOT/test/moose_test-opt}"
 TEST_DIR="$MOOSE_ROOT/test"
-RESULTS_DIR="${1:-$MOOSE_ROOT/mfem_benchmark_results}"
+RESULTS_DIR="${1:-$SCRIPT_DIR/mfem_benchmark_results_new}"
 REFINEMENTS="${REFINEMENTS:-0 1 2 3 4 5}"
 DEVICES="${DEVICES:-cpu ceed-cpu hip ceed-hip}"
 ASSEMBLY_LEVELS="${ASSEMBLY_LEVELS:-legacy full partial none}"
 MAX_ITS="${MAX_ITS:-100000}"
 ORDERS="${ORDERS:-1 2 3 4}"
 RANKS="${RANKS:-1}"
-MPI_LAUNCHER="${MPI_LAUNCHER:-srun -n}"
+MPI_LAUNCHER="${MPI_LAUNCHER:-mpirun -n}"
 
 # Split the launcher prefix into words so e.g. "srun -n" stays two tokens; the
 # rank count and executable are appended per run below.
@@ -165,5 +165,5 @@ if (( ${#failures[@]} > 0 )); then
 fi
 
 echo
-echo "Generating plots..."
-python3 "$SCRIPT_DIR/plot_mfem_timings.py" "$RESULTS_DIR"
+#echo "Generating plots..."
+#python3 "$SCRIPT_DIR/plot_mfem_timings.py" "$RESULTS_DIR"
