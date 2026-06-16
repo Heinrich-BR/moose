@@ -10,7 +10,9 @@
 # Environment overrides:
 #   MOOSE_ROOT     — root of the moose checkout (default: parent of scripts/)
 #   MOOSE_EXEC     — path to moose_test executable (default: $MOOSE_ROOT/test/moose_test-opt)
-#   REFINEMENTS    — space-separated list of serial_refine values (default: "0 1 2 3 4 5")
+#   EXAMPLES       — space-separated list of example names to run, any subset of
+#                    "diffusion curlcurl complex heattransfer" (default: all)
+#   REFINEMENTS    — space-separated list of parallel_refine values (default: "0 1 2 3 4 5")
 #   DEVICES        — space-separated list of Executioner/device values
 #                    (default: "cpu ceed-cpu hip ceed-hip")
 #   ASSEMBLY_LEVELS — space-separated list of Executioner/assembly_level values
@@ -37,6 +39,7 @@ MOOSE_ROOT=/home/dc-roch1/moose_hip/moose
 MOOSE_EXEC="${MOOSE_EXEC:-$MOOSE_ROOT/test/moose_test-opt}"
 TEST_DIR="$MOOSE_ROOT/test"
 RESULTS_DIR="${1:-$SCRIPT_DIR/mfem_benchmark_results_new}"
+EXAMPLES="${EXAMPLES:-diffusion curlcurl complex heattransfer}"
 REFINEMENTS="${REFINEMENTS:-0 1 2 3 4 5}"
 DEVICES="${DEVICES:-cpu ceed-cpu hip ceed-hip}"
 ASSEMBLY_LEVELS="${ASSEMBLY_LEVELS:-legacy full partial none}"
@@ -57,12 +60,13 @@ fi
 
 mkdir -p "$RESULTS_DIR"
 
-# tag <-> input file (relative to $TEST_DIR)
-EXAMPLES=(
-  "diffusion:tests/mfem/kernels/diffusion.i"
-  "curlcurl:tests/mfem/kernels/curlcurl.i"
-  "complex:tests/mfem/complex/complex.i"
-  "heattransfer:tests/mfem/kernels/heattransfer.i"
+# tag -> input file (relative to $TEST_DIR). The EXAMPLES variable selects which
+# of these tags to run.
+declare -A EXAMPLE_INPUTS=(
+  [diffusion]="tests/mfem/kernels/diffusion.i"
+  [curlcurl]="tests/mfem/kernels/curlcurl.i"
+  [complex]="tests/mfem/complex/complex.i"
+  [heattransfer]="tests/mfem/kernels/heattransfer.i"
 )
 
 # Per-example solver overrides so the SAME solver/preconditioner pair runs at
@@ -131,9 +135,13 @@ order_args() {
 cd "$TEST_DIR"
 
 failures=()
-for entry in "${EXAMPLES[@]}"; do
-  tag="${entry%%:*}"
-  inp="${entry#*:}"
+for tag in $EXAMPLES; do
+  inp="${EXAMPLE_INPUTS[$tag]:-}"
+  if [[ -z "$inp" ]]; then
+    echo "WARNING: unknown example '$tag' (known: ${!EXAMPLE_INPUTS[*]}) — skipping" >&2
+    failures+=("unknown example $tag")
+    continue
+  fi
   solver_args "$tag"
   for device in $DEVICES; do
     for asm in $ASSEMBLY_LEVELS; do
@@ -142,12 +150,12 @@ for entry in "${EXAMPLES[@]}"; do
         for ranks in $RANKS; do
           for r in $REFINEMENTS; do
             log="$RESULTS_DIR/${tag}_${device}_${asm}_p${p}_n${ranks}_r${r}.log"
-            echo ">>> $tag  device=$device  assembly=$asm  order=$p  ranks=$ranks  serial_refine=$r"
+            echo ">>> $tag  device=$device  assembly=$asm  order=$p  ranks=$ranks  parallel_refine=$r"
             # --kill-after sends SIGKILL if the launcher ignores the initial
             # SIGTERM (e.g. a hung GPU job) so a stuck run cannot wedge the sweep.
             timeout --kill-after=30s "$TIMEOUT" \
                 "${LAUNCHER[@]}" "$ranks" "$MOOSE_EXEC" -i "$inp" \
-                Mesh/serial_refine="$r" \
+                Mesh/parallel_refine="$r" \
                 Executioner/device="$device" \
                 Executioner/assembly_level="$asm" \
                 "${ORDER_ARGS[@]}" \
