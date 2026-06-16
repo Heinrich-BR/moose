@@ -11,7 +11,13 @@ For each example, several PNGs are written into the results directory. Timed
 sections are bucketed into three logical groups, "BuildBilinearForms",
 "FormLinearSystem" and "Mult", and for each group (plus their sum) both a
 raw-time plot and a per-DoF plot are produced. Within a plot, color denotes the
-polynomial order, linestyle the device and marker the assembly level.
+polynomial order, linestyle the device family (cpu/hip) and marker the assembly
+level.
+
+Runs are folded by device family, so the libCEED ceed-cpu/ceed-hip backends
+(which is where matrix-free "none" assembly runs) are drawn under cpu/hip. The
+assembled-matrix levels are collapsed into a single "legacy/full" series that
+uses the legacy results on CPU and the full results on GPU.
 
 An optional second argument "<cpu_ranks>,<hip_ranks>" restricts the plots to a
 single MPI-rank count per hardware family, so a CPU run at one rank count can be
@@ -84,9 +90,6 @@ LOG_NAME_RE = re.compile(
     r"(?:_p(?P<p>\d+))?(?:_n(?P<n>\d+))?_r(?P<r>\d+)\.log$"
 )
 
-# Devices to ignore entirely when collecting logs.
-SKIP_DEVICES = {"ceed-cpu", "ceed-hip"}
-
 # Polynomial order -> color (primary categorical dimension, Tableau palette).
 ORDER_COLORS = {
     1: "tab:red",
@@ -107,12 +110,28 @@ def device_family(device: str) -> str:
     """Map a device name to its hardware family, 'cpu' or 'hip'."""
     return "hip" if device in ("hip", "ceed-hip") else "cpu"
 
-# Per-assembly-level marker (third categorical dimension).
+
+def merged_assembly(family: str, asm: str):
+    """Collapse the assembled-matrix levels into one 'legacy/full' series.
+
+    The fastest assembled-matrix path differs by hardware — legacy on CPU, full on
+    GPU — so they are plotted as a single series picking the device-appropriate
+    one. Returns the assembly label to plot under, or None to drop the run (full on
+    CPU, legacy on GPU — the device-inappropriate variant). partial and none pass
+    through unchanged.
+    """
+    if asm == "legacy":
+        return "legacy/full" if family == "cpu" else None
+    if asm == "full":
+        return "legacy/full" if family == "hip" else None
+    return asm
+
+# Per-assembly-level marker (third categorical dimension). legacy and full are
+# collapsed into one "legacy/full" series by merged_assembly().
 ASSEMBLY_MARKERS = {
-    "legacy":  "o",
-    "full":    "s",
-    "partial": "^",
-    "none":    "D",
+    "legacy/full": "o",
+    "partial":     "^",
+    "none":        "D",
 }
 DEFAULT_MARKER = "x"
 
@@ -157,10 +176,12 @@ def parse_log(path: Path):
 
 
 def collect(results_dir: Path, rank_filter: dict[str, int] | None = None):
-    """Group runs by (example tag, (device, assembly, order)).
-    Returns {tag: {(device, assembly, order): [(refinement, dofs, group_times), ...]}}.
+    """Group runs by (example tag, (device_family, assembly, order)).
+    Returns {tag: {(family, assembly, order): [(refinement, dofs, group_times), ...]}}.
 
-    If `rank_filter` is given (a {family: rank_count} mapping), only logs whose
+    Devices are folded to their family (cpu/hip), so ceed-cpu/ceed-hip share a
+    series with cpu/hip; legacy/full are merged per merged_assembly(). If
+    `rank_filter` is given (a {family: rank_count} mapping), only logs whose
     MPI-rank count matches the requirement for their device family are kept.
     """
     runs: dict[
@@ -171,14 +192,15 @@ def collect(results_dir: Path, rank_filter: dict[str, int] | None = None):
         if not m:
             continue
         tag = m.group("tag")
-        device = m.group("device")
-        if device in SKIP_DEVICES:
-            continue
+        family = device_family(m.group("device"))
         ranks = int(m.group("n")) if m.group("n") else None
-        if rank_filter is not None and ranks != rank_filter[device_family(device)]:
+        if rank_filter is not None and ranks != rank_filter[family]:
+            continue
+        assembly = merged_assembly(family, m.group("asm"))
+        if assembly is None:
             continue
         order = int(m.group("p")) if m.group("p") else 1
-        key = (device, m.group("asm"), order)
+        key = (family, assembly, order)
         refinement = int(m.group("r"))
         dofs, group_times = parse_log(log)
         if dofs is None:
@@ -192,7 +214,10 @@ def collect(results_dir: Path, rank_filter: dict[str, int] | None = None):
         )
     for tag in runs:
         for key in runs[tag]:
-            runs[tag][key].sort()
+            # Sort by (refinement, dofs) only; the trailing group_times dict is not
+            # orderable, and several runs (e.g. different rank counts) can share the
+            # same refinement under one folded key.
+            runs[tag][key].sort(key=lambda entry: (entry[0], entry[1]))
     return runs
 
 
@@ -227,7 +252,7 @@ def plot_kind(tag: str, by_run, kind_label: str, components, out_path: Path,
         ),
     )
 
-    plotted_any = False
+    plotted_keys = []
     for device, asm, order in keys_present:
         color = ORDER_COLORS.get(order, DEFAULT_COLOR)
         linestyle = DEVICE_LINESTYLES.get(device, DEFAULT_LINESTYLE)
@@ -239,25 +264,27 @@ def plot_kind(tag: str, by_run, kind_label: str, components, out_path: Path,
                 continue
             xs.append(dofs)
             ys.append(v / dofs if normalize else v)
-        if not xs:
+        # A lone point draws no line, so the device (linestyle) is indistinguishable;
+        # require at least two points before plotting a series.
+        if len(xs) < 2:
             continue
         ax.loglog(xs, ys, color=color, linestyle=linestyle, marker=marker)
-        plotted_any = True
+        plotted_keys.append((device, asm, order))
 
-    if not plotted_any:
-        print(f"  {tag} [{kind_label}]: no usable timing data — skipping plot")
+    if not plotted_keys:
+        print(f"  {tag} [{kind_label}]: no series with >=2 points — skipping plot")
         plt.close(fig)
         return
 
     # Three-part legend: order -> color, device -> linestyle, assembly -> marker.
     from matplotlib.lines import Line2D
 
-    orders_present = [p for p in ORDER_COLORS if any(k[2] == p for k in keys_present)]
-    orders_present += sorted({k[2] for k in keys_present} - set(orders_present))
-    devices_present = [d for d in DEVICE_LINESTYLES if any(k[0] == d for k in keys_present)]
-    devices_present += sorted({k[0] for k in keys_present} - set(devices_present))
-    assemblies_present = [a for a in ASSEMBLY_MARKERS if any(k[1] == a for k in keys_present)]
-    assemblies_present += sorted({k[1] for k in keys_present} - set(assemblies_present))
+    orders_present = [p for p in ORDER_COLORS if any(k[2] == p for k in plotted_keys)]
+    orders_present += sorted({k[2] for k in plotted_keys} - set(orders_present))
+    devices_present = [d for d in DEVICE_LINESTYLES if any(k[0] == d for k in plotted_keys)]
+    devices_present += sorted({k[0] for k in plotted_keys} - set(devices_present))
+    assemblies_present = [a for a in ASSEMBLY_MARKERS if any(k[1] == a for k in plotted_keys)]
+    assemblies_present += sorted({k[1] for k in plotted_keys} - set(assemblies_present))
 
     order_handles = [
         Line2D(
