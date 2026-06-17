@@ -229,7 +229,6 @@ EquationSystem::ApplyEssentialBC(const std::string & var_name,
       for (const auto i : make_range(trial_gf.ParFESpace()->GetParMesh()->bdr_attributes.Max()))
         global_ess_markers[i] = std::max(global_ess_markers[i], ess_bdrs[i]);
     }
-    trial_gf.HostReadWrite();
   }
 }
 
