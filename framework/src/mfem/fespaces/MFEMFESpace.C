@@ -48,6 +48,13 @@ MFEMFESpace::buildFESpace() const
 {
   _fespace =
       std::make_shared<mfem::ParFiniteElementSpace>(&_pmesh, getFEC().get(), getVDim(), _ordering);
+
+  // WORKAROUND (MI300X): MFEM's hipSPARSE SpMV returns incorrect (zero)
+  // results for the conforming restriction matrix used in
+  // mfem::ParBilinearForm::FormLinearSystem, silently dropping the Dirichlet BC
+  // and producing a zero initial residual in parallel GPU runs. 
+  if (auto * R = const_cast<mfem::SparseMatrix *>(_fespace->GetRestrictionMatrix()))
+    R->UseGPUSparse(false);
 }
 
 #endif

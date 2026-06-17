@@ -215,7 +215,6 @@ EquationSystem::ApplyEssentialBC(const std::string & var_name,
                                  mfem::Array<int> & global_ess_markers)
 {
   if (_essential_bc_map.Has(var_name))
-  {
     for (auto & bc : _essential_bc_map.GetRef(var_name))
     {
       // Set constrained DoFs values on essential boundaries
@@ -226,8 +225,6 @@ EquationSystem::ApplyEssentialBC(const std::string & var_name,
       for (const auto i : make_range(ess_bdrs.Size()))
         global_ess_markers[i] |= ess_bdrs[i];
     }
-    trial_gf.HostReadWrite();
-  }
 }
 
 void

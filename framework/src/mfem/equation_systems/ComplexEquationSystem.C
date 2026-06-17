@@ -171,7 +171,6 @@ ComplexEquationSystem::ApplyComplexEssentialBC(const std::string & var_name,
                                                mfem::Array<int> & global_ess_markers)
 {
   if (_cmplx_essential_bc_map.Has(var_name))
-  {
     for (auto & bc : _cmplx_essential_bc_map.GetRef(var_name))
     {
       // Set constrained DoFs values on essential boundaries
@@ -182,9 +181,6 @@ ComplexEquationSystem::ApplyComplexEssentialBC(const std::string & var_name,
       for (const auto i : make_range(ess_bdrs.Size()))
         global_ess_markers[i] |= ess_bdrs[i];
     }
-    trial_gf.real().HostReadWrite();
-    trial_gf.imag().HostReadWrite();
-  }
 }
 
 void
