@@ -111,25 +111,48 @@ def device_family(device: str) -> str:
     return "hip" if device in ("hip", "ceed-hip") else "cpu"
 
 
-def merged_assembly(family: str, asm: str):
-    """Collapse the assembled-matrix levels into one 'legacy/full' series.
+# The assembled-matrix levels collapsed into one "legacy/full" series, and the
+# device-appropriate preference (the fastest assembled path differs by hardware).
+ASSEMBLED_LEVELS = ("legacy", "full")
+ASSEMBLED_LABEL = "legacy/full"
 
-    The fastest assembled-matrix path differs by hardware — legacy on CPU, full on
-    GPU — so they are plotted as a single series picking the device-appropriate
-    one. Returns the assembly label to plot under, or None to drop the run (full on
-    CPU, legacy on GPU — the device-inappropriate variant). partial and none pass
-    through unchanged.
+
+def _preferred_assembled(family: str) -> str:
+    """The device-appropriate assembled-matrix level: full on GPU, legacy on CPU."""
+    return "full" if family == "hip" else "legacy"
+
+
+def merge_assembled_levels(by_run):
+    """Collapse the 'legacy' and 'full' series into one 'legacy/full' per
+    (family, order).
+
+    Prefer the device-appropriate level (full on GPU, legacy on CPU) but fall back
+    to whichever is actually present in the data — some examples only run at one
+    level (e.g. complex is legacy-only since non-legacy assembly is single-variable
+    only), so a strict preference would drop them entirely. partial/none and any
+    other levels pass through unchanged.
     """
-    if asm == "legacy":
-        return "legacy/full" if family == "cpu" else None
-    if asm == "full":
-        return "legacy/full" if family == "hip" else None
-    return asm
+    merged: dict = {}
+    seen_assembled: set = set()
+    for (family, asm, order), entries in by_run.items():
+        if asm not in ASSEMBLED_LEVELS:
+            merged[(family, asm, order)] = entries
+            continue
+        if (family, order) in seen_assembled:
+            continue
+        seen_assembled.add((family, order))
+        preferred = _preferred_assembled(family)
+        other = "full" if preferred == "legacy" else "legacy"
+        chosen = preferred if (family, preferred, order) in by_run else other
+        merged[(family, ASSEMBLED_LABEL, order)] = by_run[(family, chosen, order)]
+    return merged
 
 # Per-assembly-level marker (third categorical dimension). legacy and full are
-# collapsed into one "legacy/full" series by merged_assembly().
+# collapsed into one "legacy/full" series by merge_assembled_levels(); element,
+# partial and none are distinct matrix-free-ish levels plotted on their own.
 ASSEMBLY_MARKERS = {
     "legacy/full": "o",
+    "element":     "s",
     "partial":     "^",
     "none":        "D",
 }
@@ -180,7 +203,7 @@ def collect(results_dir: Path, rank_filter: dict[str, int] | None = None):
     Returns {tag: {(family, assembly, order): [(refinement, dofs, group_times), ...]}}.
 
     Devices are folded to their family (cpu/hip), so ceed-cpu/ceed-hip share a
-    series with cpu/hip; legacy/full are merged per merged_assembly(). If
+    series with cpu/hip; legacy/full are merged per merge_assembled_levels(). If
     `rank_filter` is given (a {family: rank_count} mapping), only logs whose
     MPI-rank count matches the requirement for their device family are kept.
     """
@@ -196,11 +219,8 @@ def collect(results_dir: Path, rank_filter: dict[str, int] | None = None):
         ranks = int(m.group("n")) if m.group("n") else None
         if rank_filter is not None and ranks != rank_filter[family]:
             continue
-        assembly = merged_assembly(family, m.group("asm"))
-        if assembly is None:
-            continue
         order = int(m.group("p")) if m.group("p") else 1
-        key = (family, assembly, order)
+        key = (family, m.group("asm"), order)
         refinement = int(m.group("r"))
         dofs, group_times = parse_log(log)
         if dofs is None:
@@ -213,6 +233,7 @@ def collect(results_dir: Path, rank_filter: dict[str, int] | None = None):
             (refinement, dofs, group_times)
         )
     for tag in runs:
+        runs[tag] = merge_assembled_levels(runs[tag])
         for key in runs[tag]:
             # Sort by (refinement, dofs) only; the trailing group_times dict is not
             # orderable, and several runs (e.g. different rank counts) can share the

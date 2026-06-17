@@ -16,7 +16,7 @@
 #   DEVICES        — space-separated list of Executioner/device values
 #                    (default: "cpu ceed-cpu hip ceed-hip")
 #   ASSEMBLY_LEVELS — space-separated list of Executioner/assembly_level values
-#                    (default: "legacy full partial none")
+#                    (default: "legacy full element partial none")
 #   MAX_ITS        — Krylov iteration cap (Solver/l_max_its) applied to every
 #                    iterative-solver run (default: 100000)
 #   ORDERS         — space-separated list of polynomial orders (default: "1 2 3 4")
@@ -42,7 +42,7 @@ RESULTS_DIR="${1:-$SCRIPT_DIR/mfem_benchmark_results_new}"
 EXAMPLES="${EXAMPLES:-diffusion curlcurl complex heattransfer}"
 REFINEMENTS="${REFINEMENTS:-0 1 2 3 4 5}"
 DEVICES="${DEVICES:-cpu ceed-cpu hip ceed-hip}"
-ASSEMBLY_LEVELS="${ASSEMBLY_LEVELS:-legacy full partial none}"
+ASSEMBLY_LEVELS="${ASSEMBLY_LEVELS:-legacy full element partial none}"
 MAX_ITS="${MAX_ITS:-100000}"
 ORDERS="${ORDERS:-1 2 3 4}"
 RANKS="${RANKS:-1}"
