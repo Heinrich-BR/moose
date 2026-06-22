@@ -53,8 +53,8 @@ MFEMFESpace::buildFESpace() const
   // results for the conforming restriction matrix used in
   // mfem::ParBilinearForm::FormLinearSystem, silently dropping the Dirichlet BC
   // and producing a zero initial residual in parallel GPU runs. 
-  if (auto * R = const_cast<mfem::SparseMatrix *>(_fespace->GetRestrictionMatrix()))
-    R->UseGPUSparse(false);
+  //if (auto * R = const_cast<mfem::SparseMatrix *>(_fespace->GetRestrictionMatrix()))
+  //  R->UseGPUSparse(false);
 }
 
 #endif

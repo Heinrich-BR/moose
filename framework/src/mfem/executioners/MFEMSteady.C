@@ -45,14 +45,14 @@ MFEMSteady::MFEMSteady(const InputParameters & params)
     {
       if (dynamic_cast<MFEMEigenproblem *>(&_mfem_problem))
       {
-        _mfem_problem_data.eqn_system = std::make_shared<Moose::MFEM::EigenproblemEquationSystem>();
+        _mfem_problem_data.eqn_system = std::make_shared<Moose::MFEM::EigenproblemEquationSystem>(_mfem_problem.perfGraph());
         auto problem_operator =
             std::make_shared<Moose::MFEM::EigenproblemESProblemOperator>(_mfem_problem);
         addProblemOperator(std::move(problem_operator));
       }
       else
       {
-        _mfem_problem_data.eqn_system = std::make_shared<Moose::MFEM::EquationSystem>();
+        _mfem_problem_data.eqn_system = std::make_shared<Moose::MFEM::EquationSystem>(_mfem_problem.perfGraph());
         auto problem_operator =
             std::make_shared<Moose::MFEM::EquationSystemProblemOperator>(_mfem_problem);
         addProblemOperator(std::move(problem_operator));

@@ -22,7 +22,7 @@ namespace Moose::MFEM
 class EigenproblemEquationSystem : public EquationSystem
 {
 public:
-  EigenproblemEquationSystem() = default;
+  EigenproblemEquationSystem(PerfGraph & perf_graph) : EquationSystem(perf_graph) {};
   ~EigenproblemEquationSystem() override = default;
 
   /// Build eigenproblem system, with essential boundary conditions accounted for
