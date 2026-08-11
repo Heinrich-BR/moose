@@ -123,7 +123,7 @@ yc = 50.0
 [ProblemComposer]
   [rogers_ricci]
     type = RogersRicci2DProblemComposer
-    variables = 'T omega'
+    variables = 'T omega n'
     potential_variable = phi
     potential_coefficient = phi_qf
     source_coefficient = source_qf
