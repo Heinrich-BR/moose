@@ -35,4 +35,18 @@
     recover = false
     restep = false
   []
+  [RogersRicci2D]
+    type = CSVDiff
+    input = rogers_ricci_2d.i
+    cli_args = 'Executioner/num_steps=5'
+    csvdiff = 'OutputData/rogers_ricci_2d.csv'
+    requirement = 'The system shall be able to solve the 2D Rogers-Ricci drift-turbulence model '
+                  'using a custom time dependent problem operator that advances temperature, '
+                  'vorticity, density and electrostatic potential as a single implicit block '
+                  'system, with the potential constrained by a Poisson equation rather than '
+                  'solved separately.'
+    capabilities = 'mfem'
+    compute_devices = 'cpu'
+    recover = false
+  []
 []
