@@ -15,6 +15,7 @@
 [Mesh]
   type = MFEMFileMesh
   file = ../mesh/rogers_ricci_64x64.mesh
+  uniform_refine = 2
 []
 
 [Problem]
@@ -49,12 +50,11 @@
 []
 
 [Functions]
-  # Particle source S_n. In the normalised equations this also supplies S_T.
   [Sn]
     type = ParsedFunction
-    expression = 'S_0n * (1 - tanh(((sqrt((x - xL / 2)^2 + (y - yL / 2)^2) / r_unit - 20) / 0.5) / b_att))'
-    symbol_names = 'S_0n xL yL r_unit b_att'
-    symbol_values = '0.03 1.0 1.0 1e-2 5.0'
+    expression = '0.5 * S_0n * (1 - tanh((sqrt((x - xL / 2)^2 + (y - yL / 2)^2) - r_s) / L_s))'
+    symbol_names = 'S_0n xL yL r_s L_s'
+    symbol_values = '0.03 100.0 100.0 20.0 0.5'
   []
 []
 
@@ -74,8 +74,6 @@
     variable = n
     coefficient = 1e-4
   []
-  # phi is uniform and omega is zero at t = 0, so the Poisson constraint
-  # L phi + M omega = 0 holds initially and the first step starts consistent.
   [phi_ic]
     type = MFEMScalarIC
     variable = phi
@@ -91,6 +89,9 @@
     density = n
     potential = phi
     source = Sn
+    lambda = 3.0
+    b_inv = 40.0
+    eps_squared = 1e-4
   []
 []
 
@@ -103,38 +104,15 @@
 [Executioner]
   type = MFEMTransient
   device = cpu
-  dt = 1.5e-3
+  dt = 0.12
   start_time = 0.0
-  end_time = 0.75
-[]
-
-[Postprocessors]
-  [T_l2]
-    type = MFEML2Error
-    variable = T
-    function = 0
-  []
-  [omega_l2]
-    type = MFEML2Error
-    variable = omega
-    function = 0
-  []
-  [n_l2]
-    type = MFEML2Error
-    variable = n
-    function = 0
-  []
-  [phi_l2]
-    type = MFEML2Error
-    variable = phi
-    function = 0
-  []
+  end_time = 120
 []
 
 [Outputs]
-  [CSV]
-    type = CSV
-    execute_on = 'timestep_end'
-    file_base = OutputData/rogers_ricci_2d
+  [ParaViewDataCollection]
+    type = MFEMParaViewDataCollection
+    file_base = OutputData/RogersRicci2D_R2
+    vtk_format = ASCII
   []
 []

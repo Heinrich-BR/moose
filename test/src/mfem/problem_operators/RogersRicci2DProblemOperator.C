@@ -101,8 +101,7 @@ RogersRicci2DProblemOperator::Init(mfem::BlockVector & X)
   declareCoefficients();
 
   // Backward Euler in slope form: ImplicitSolve returns k and the solver forms
-  // x <- x + dt k. SetImplicitVariableType(STATE) is deliberately not
-  // called, since that would switch BackwardEulerSolver::Step to x = k instead.
+  // x <- x + dt k.
   _problem_data.ode_solver = std::make_unique<mfem::BackwardEulerSolver>();
   _problem_data.ode_solver->Init(*this);
   SetTime(_problem.time());
@@ -123,7 +122,10 @@ RogersRicci2DProblemOperator::declareCoefficients()
   auto & source = coefs.getScalarCoefficient(_source_name);
 
   // Drift velocity v_d = R grad(phi), so that v_d . grad(u) is the Poisson bracket
-  // [phi, u], and the streamline-upwind diffusivity (h/2)|v_d| vhat (x) vhat built from it.
+  // [phi, u], and the streamline-upwind diffusivity (h/2)|a| vhat (x) vhat built from it.
+  // The transported variables are advected at a = b_inv * v_d (the ConvectionIntegrator in
+  // formSystem() carries the b_inv factor), so the diffusivity is scaled by |a| rather than
+  // by |v_d|.
   mfem::DenseMatrix rotation({{0.0, -1.0}, {1.0, 0.0}});
   auto & rot =
       coefs.declareMatrix<mfem::MatrixConstantCoefficient>(coefName("rotation"), rotation);
@@ -134,7 +136,7 @@ RogersRicci2DProblemOperator::declareCoefficients()
   auto & drift_hat = coefs.declareVector<mfem::NormalizedVectorCoefficient>(
       coefName("vd_hat"), drift, _eps_squared);
   auto & drift_scaled = coefs.declareVector<mfem::ScalarVectorProductCoefficient>(
-      coefName("vd_scaled"), _element_size / 2.0, drift_hat);
+      coefName("vd_scaled"), _b_inv * _element_size / 2.0, drift_hat);
   coefs.declareMatrix<mfem::OuterProductCoefficient>(coefName("suw"), drift, drift_scaled);
 
   // exp(Lambda - phi/sqrt(T^2 + eps2)), shared by every reaction term and its derivatives.
@@ -175,10 +177,7 @@ RogersRicci2DProblemOperator::declareCoefficients()
 
   // Gateaux derivatives of the reaction terms. With Ttil = sqrt(T^2 + eps2) and
   // E = Lambda - phi/Ttil, the exact derivatives are dE/dT = phi T / Ttil^3 and
-  // dE/dphi = -1/Ttil. The T/Ttil factors are kept rather than approximated by one: the
-  // eps2 regularisation exists to keep these bounded as T -> 0, and dropping T/Ttil
-  // defeats it exactly there, leaving D_T F_omega to diverge like phi/eps2 and to carry
-  // the wrong sign for T < 0.
+  // dE/dphi = -1/Ttil.
   //
   // dt is folded into these coefficients, so they enter as plain mass terms.
   coefs.declareScalar<mfem::TransformedCoefficient>(
@@ -212,8 +211,7 @@ RogersRicci2DProblemOperator::declareCoefficients()
   coefs.declareScalar<mfem::TransformedCoefficient>(
       coefName("DT_Fn"), &n_coef, &dt_fw, [](mfem::real_t n, mfem::real_t d) { return n * d; });
 
-  // Derivatives with respect to phi, which are what make phi genuinely implicit in the
-  // transported rows rather than merely solved simultaneously.
+  // Derivatives with respect to phi.
   coefs.declareScalar<mfem::TransformedCoefficient>(
       dPhiFCoefName(RR_T),
       &t_coef,
@@ -363,13 +361,7 @@ RogersRicci2DProblemOperator::formSystem(mfem::real_t dt)
   //   L phi_new + M omega_new = 0, with phi_new = phi + dt k_phi, omega_new = omega + dt k_omega
   // gives
   //   dt L k_phi + dt M k_omega = -(L phi + M omega).
-  // The row is linear, so the constraint is satisfied exactly at every step. Keeping dt on
-  // both blocks also scales them to the mass blocks elsewhere: dt L is O(1.5e-3) against
-  // M ~ h^2 ~ 2.4e-4, whereas an unscaled L would be some 4000 times larger.
-  //
-  // L and M are built unscaled so the same forms supply both the right-hand side (via
-  // TrueAddMult) and the scaled matrix blocks. FormSystemMatrix would destroy the form's
-  // local matrix and break those TrueAddMult calls.
+  // The row is linear, so the constraint is satisfied exactly at every step.
   {
     mfem::ParBilinearForm l_phi(_fespace);
     l_phi.AddDomainIntegrator(new mfem::DiffusionIntegrator);

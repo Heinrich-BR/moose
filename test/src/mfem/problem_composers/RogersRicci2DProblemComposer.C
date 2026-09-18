@@ -34,8 +34,11 @@ RogersRicci2DProblemComposer::validParams()
       "lambda", 3.0, "Constant in the exponent of the sheath-loss terms.");
   params.addParam<mfem::real_t>(
       "eps_squared",
-      1e-12,
-      "Regularisation keeping sqrt(T^2 + eps_squared) bounded away from zero.");
+      1e-4,
+      "Regularisation keeping sqrt(T^2 + eps_squared) bounded away from zero. This bounds "
+      "phi/sqrt(T^2 + eps_squared) by 100*phi in the sheath term exp(Lambda - phi/T); at "
+      "1e-12 the bound is 1e6*phi and the exponential overflows as soon as phi reaches "
+      "O(1) while T is still near its 1e-4 initial value.");
   return params;
 }
 
