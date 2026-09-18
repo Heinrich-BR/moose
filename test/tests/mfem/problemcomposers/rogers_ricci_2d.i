@@ -109,7 +109,38 @@
   end_time = 120
 []
 
+# Global L2 norms of the four fields, compared against the gold by the regression test. The
+# function = 0 comparison makes MFEML2Error report ||u|| rather than an error against a
+# reference solution.
+[Postprocessors]
+  [T_l2]
+    type = MFEML2Error
+    variable = T
+    function = 0
+  []
+  [omega_l2]
+    type = MFEML2Error
+    variable = omega
+    function = 0
+  []
+  [n_l2]
+    type = MFEML2Error
+    variable = n
+    function = 0
+  []
+  [phi_l2]
+    type = MFEML2Error
+    variable = phi
+    function = 0
+  []
+[]
+
 [Outputs]
+  [CSV]
+    type = CSV
+    execute_on = 'timestep_end'
+    file_base = OutputData/rogers_ricci_2d
+  []
   [ParaViewDataCollection]
     type = MFEMParaViewDataCollection
     file_base = OutputData/RogersRicci2D_R2
