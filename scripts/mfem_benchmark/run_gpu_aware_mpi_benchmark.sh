@@ -25,7 +25,7 @@
 #                    (default: "cpu ceed-cpu hip ceed-hip")
 #   ASSEMBLY_LEVELS — space-separated list of Executioner/assembly_level values
 #                    (default: "legacy full element partial none")
-#   MAX_ITS        — Krylov iteration cap (Solver/l_max_its) applied to every
+#   MAX_ITS        — Krylov iteration cap (l_max_its of the main [Solvers] entry) applied to every
 #                    iterative-solver run (default: 100000)
 #   ORDERS         — space-separated list of polynomial orders (default: "1 2 3 4")
 #   RANKS          — space-separated list of MPI rank counts to run (default: "1")
@@ -92,22 +92,26 @@ declare -A EXAMPLE_INPUTS=(
 #   - l_max_its is raised to MAX_ITS everywhere: the input-file caps (1000 for
 #     heattransfer, the 10000 default elsewhere) were hit without convergence at
 #     high refinement levels, making those timing points iteration-capped.
+#   - every active [Solvers] entry that no other entry references becomes a
+#     solver driver, so the inputs' default preconditioners are deactivated.
 solver_args() {
   case "$1" in
     diffusion)
-      SOLVER_ARGS=(Solver/type=MFEMCGSolver Solver/l_max_its="$MAX_ITS"
-                   Preconditioner/active=jacobi Solver/preconditioner=jacobi)
+      SOLVER_ARGS=(Solvers/inactive=boomeramg
+                   Solvers/main/type=MFEMCGSolver Solvers/main/l_max_its="$MAX_ITS"
+                   Solvers/main/preconditioner=jacobi)
       ;;
     heattransfer)
       SOLVER_ARGS=("BCs/active=bottom top_dirichlet"
-                   Solver/type=MFEMCGSolver Solver/l_max_its="$MAX_ITS"
-                   Preconditioner/active=jacobi Solver/preconditioner=jacobi)
+                   Solvers/inactive=boomeramg
+                   Solvers/main/type=MFEMCGSolver Solvers/main/l_max_its="$MAX_ITS"
+                   Solvers/main/preconditioner=jacobi)
       ;;
     curlcurl)
-      SOLVER_ARGS=(Preconditioner/active=jacobi
-                   Preconditioner/jacobi/type=MFEMOperatorJacobiSmoother
-                   Solver/type=MFEMGMRESSolver Solver/preconditioner=jacobi
-                   Solver/l_max_its="$MAX_ITS")
+      SOLVER_ARGS=("Solvers/active=gmres jacobi"
+                   Solvers/jacobi/type=MFEMOperatorJacobiSmoother
+                   Solvers/gmres/type=MFEMGMRESSolver Solvers/gmres/preconditioner=jacobi
+                   Solvers/gmres/l_max_its="$MAX_ITS")
       ;;
     *)
       SOLVER_ARGS=()  # complex: no override, expected to error at non-legacy
