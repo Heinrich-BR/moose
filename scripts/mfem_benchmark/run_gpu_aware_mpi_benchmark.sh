@@ -32,6 +32,10 @@
 #                    (GPU-aware MPI only matters for >1 rank; use a single value)
 #   MPI_LAUNCHER   — launcher prefix to which the rank count is appended
 #                    (default: "srun -n"; use e.g. "mpirun -np" off SLURM)
+#   GPU_BIND       - 1 to start each rank through gpu_bind.sh, which restricts it
+#                    to its own GPU by node-local rank; needed with mpirun, which
+#                    does not bind GPUs, so all ranks would share the first GPU
+#                    (default: 0)
 #   TIMEOUT        — per-run wall-clock limit in seconds; a run exceeding it is
 #                    cancelled and all higher refinement levels for the same
 #                    parameters are skipped (default: 600)
@@ -57,10 +61,16 @@ ORDERS="${ORDERS:-1 2 3 4}"
 RANKS="${RANKS:-1}"
 MPI_LAUNCHER="${MPI_LAUNCHER:-srun -n}"
 TIMEOUT="${TIMEOUT:-600}"
+GPU_BIND="${GPU_BIND:-0}"
 
 # Split the launcher prefix into words so e.g. "srun -n" stays two tokens; the
 # rank count and executable are appended per run below.
 read -ra LAUNCHER <<< "$MPI_LAUNCHER"
+
+EXEC=("$MOOSE_EXEC")
+if [[ "$GPU_BIND" == 1 ]]; then
+  EXEC=("$SCRIPT_DIR/gpu_bind.sh" "$MOOSE_EXEC")
+fi
 
 if [[ ! -x "$MOOSE_EXEC" ]]; then
   echo "ERROR: $MOOSE_EXEC not executable. Set MOOSE_EXEC to the right binary." >&2
@@ -177,7 +187,7 @@ for tag in $EXAMPLES; do
               # --kill-after sends SIGKILL if the launcher ignores the initial
               # SIGTERM (e.g. a hung GPU job) so a stuck run cannot wedge the sweep.
               timeout --kill-after=30s "$TIMEOUT" \
-                  "${LAUNCHER[@]}" "$ranks" "$MOOSE_EXEC" -i "$inp" \
+                  "${LAUNCHER[@]}" "$ranks" "${EXEC[@]}" -i "$inp" \
                   Mesh/parallel_refine="$r" \
                   Executioner/device="$device" \
                   Executioner/assembly_level="$asm" \

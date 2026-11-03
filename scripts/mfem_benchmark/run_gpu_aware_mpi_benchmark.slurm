@@ -44,6 +44,8 @@ export ASSEMBLY_LEVELS="none"
 export ORDERS="1 2 3 4"
 export RANKS=$SLURM_NTASKS
 export MPI_LAUNCHER="mpirun -n"
+# mpirun does not apply --gpus-per-task, so bind each rank to its own GPU
+export GPU_BIND=1
 export TIMEOUT=1200
 
 # The results directory is taken from the first argument, not the environment
