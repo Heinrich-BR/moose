@@ -35,31 +35,35 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-# Timed PerfGraph sections are bucketed into logical groups. The prefix "MFEM::"
-# comes from PerfGraphInterface(perf_graph, "MFEM") / PerfGraphInterface(&problem,
-# "MFEM"). Within a single run at most one pattern per group fires (the op/diag and
-# steady/transient code paths are mutually exclusive and never co-occur), so a
-# run's group time is just the sum of whatever matched.
+# Timed PerfGraph sections are bucketed into logical groups. Section names carry
+# no prefix; logs produced before the branch was rebased onto next carry an extra
+# "MFEM::" prefix (from PerfGraphInterface(perf_graph, "MFEM")), which is accepted
+# as optional so old and new logs both parse. Within a single run at most one
+# pattern per group fires (the op/diag and steady/transient code paths are
+# mutually exclusive and never co-occur), so a run's group time is just the sum of
+# whatever matched.
 SECTION_GROUPS = {
     # Local (bi/sesqui)linear form assembly: steady, transient and complex paths
     # each have their own BuildBilinearForms override; only one fires per run.
     "BuildBilinearForms": [
-        re.compile(r"^MFEM::EquationSystem::BuildBilinearForms$"),
-        re.compile(r"^MFEM::TimeDependentEquationSystem::BuildBilinearForms$"),
-        re.compile(r"^MFEM::ComplexEquationSystem::BuildBilinearForms$"),
+        re.compile(r"^(?:MFEM::)?EquationSystem::BuildBilinearForms$"),
+        re.compile(r"^(?:MFEM::)?TimeDependentEquationSystem::BuildBilinearForms$"),
+        re.compile(r"^(?:MFEM::)?ComplexEquationSystem::BuildBilinearForms$"),
     ],
     # FormSystemOperator (non-legacy) and FormSystemMatrix (legacy diagonal block)
     # are different paths representing the same work; real and complex are folded
     # together too since each example is either real or complex, never both.
     "FormLinearSystem": [
-        re.compile(r"^MFEM::EquationSystem::FormSystemOperator::FormLinearSystem$"),
-        re.compile(r"^MFEM::EquationSystem::FormSystemMatrix::FormLinearSystem$"),
-        re.compile(r"^MFEM::ComplexEquationSystem::FormSystemOperator::FormLinearSystem$"),
-        re.compile(r"^MFEM::ComplexEquationSystem::FormSystemMatrix::FormLinearSystem$"),
+        re.compile(r"^(?:MFEM::)?EquationSystem::FormSystemOperator::FormLinearSystem$"),
+        re.compile(r"^(?:MFEM::)?EquationSystem::FormSystemMatrix::FormLinearSystem$"),
+        re.compile(r"^(?:MFEM::)?ComplexEquationSystem::FormSystemOperator::FormLinearSystem$"),
+        re.compile(r"^(?:MFEM::)?ComplexEquationSystem::FormSystemMatrix::FormLinearSystem$"),
     ],
-    # Steady (Solve), transient (ImplicitSolve) and complex (Solve) residual
-    # evaluations folded into one "Mult" group.
+    # Solver Mult calls folded into one "Mult" group. Steady, transient and complex
+    # solves all go through ProblemOperatorBase::SolveWithOperator; the three
+    # per-operator names are what logs from before the rebase onto next contain.
     "Mult": [
+        re.compile(r"^ProblemOperatorBase::SolveWithOperator::Mult$"),
         re.compile(r"^MFEM::EquationSystemProblemOperator::Solve::Mult$"),
         re.compile(r"^MFEM::TimeDependentEquationSystemProblemOperator::ImplicitSolve::Mult$"),
         re.compile(r"^MFEM::ComplexEquationSystemProblemOperator::Solve::Mult$"),
