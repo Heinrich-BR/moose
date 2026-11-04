@@ -30,9 +30,12 @@
 #   TIMEOUT        — per-run wall-clock limit in seconds; a run exceeding it is
 #                    cancelled and all higher refinement levels for the same
 #                    parameters are skipped (default: 600)
+#   MFEM_GPU_AWARE_MPI - set to any value to enable GPU-aware MPI in every run; read
+#                    by MFEM and recorded in the log names (default: unset = off)
 #
 # After completion, results_dir contains:
-#   <example>_<device>_<assembly>_p<P>_n<R>_r<N>.log — raw stdout of each run
+#   <example>_<device>_<assembly>_p<P>_n<R>_r<N>_gam<0|1>.log — raw stdout of each
+#                    run (gam1 = GPU-aware MPI on, gam0 = off)
 #   <example>_timings.png         — log-log timing plot per example
 #                                    (one curve per section × device × assembly)
 
@@ -53,6 +56,13 @@ RANKS="${RANKS:-1}"
 MPI_LAUNCHER="${MPI_LAUNCHER:-mpirun -n}"
 TIMEOUT="${TIMEOUT:-600}"
 GPU_BIND="${GPU_BIND:-0}"
+
+# MFEM enables GPU-aware MPI whenever MFEM_GPU_AWARE_MPI exists, whatever its value.
+if [[ -n "${MFEM_GPU_AWARE_MPI+set}" ]]; then
+  gam=1
+else
+  gam=0
+fi
 
 # Split the launcher prefix into words so e.g. "srun -n" stays two tokens; the
 # rank count and executable are appended per run below.
@@ -163,7 +173,7 @@ for tag in $EXAMPLES; do
         order_args "$tag" "$p"
         for ranks in $RANKS; do
           for r in $REFINEMENTS; do
-            log="$RESULTS_DIR/${tag}_${device}_${asm}_p${p}_n${ranks}_r${r}.log"
+            log="$RESULTS_DIR/${tag}_${device}_${asm}_p${p}_n${ranks}_r${r}_gam${gam}.log"
             echo ">>> $tag  device=$device  assembly=$asm  order=$p  ranks=$ranks  parallel_refine=$r"
             # --kill-after sends SIGKILL if the launcher ignores the initial
             # SIGTERM (e.g. a hung GPU job) so a stuck run cannot wedge the sweep.

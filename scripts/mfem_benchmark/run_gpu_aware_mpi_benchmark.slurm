@@ -43,6 +43,7 @@ export DEVICES="ceed-cuda"
 export ASSEMBLY_LEVELS="none"
 export ORDERS="1 2 3 4"
 export RANKS=$SLURM_NTASKS
+export GAMS="1 0"
 export MPI_LAUNCHER="mpirun -n"
 # mpirun does not apply --gpus-per-task, so bind each rank to its own GPU
 export GPU_BIND=1

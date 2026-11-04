@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
-Parse MOOSE-MFEM benchmark logs produced by run_benchmark.sh and generate
-log-log plots of timing vs. number of true DoFs for each example.
+Parse MOOSE-MFEM benchmark logs produced by run_benchmark.sh or
+run_gpu_aware_mpi_benchmark.sh and generate log-log plots of timing vs. number of
+true DoFs for each example.
 
 Each log must contain:
   - a [MFEM_DOFS] total_true_dofs=N line (added in EquationSystem::Init / ComplexEquationSystem::Init)
@@ -12,7 +13,8 @@ sections are bucketed into three logical groups, "BuildBilinearForms",
 "FormLinearSystem" and "Mult", and for each group (plus their sum) both a
 raw-time plot and a per-DoF plot are produced. Within a plot, color denotes the
 polynomial order, linestyle the device family (cpu/hip) and marker the assembly
-level.
+level. Each GPU-aware MPI setting found in the logs gets its own set of PNGs, with
+its _gam0 (off) or _gam1 (on) suffix in the filename.
 
 Runs are folded by device family, so the libCEED ceed-cpu/ceed-hip backends
 (which is where matrix-free "none" assembly runs) are drawn under cpu/hip. The
@@ -89,9 +91,12 @@ DOFS_RE = re.compile(r"\[MFEM_DOFS\]\s+total_true_dofs=(\d+)")
 # compatibility with logs produced before those sweeps were added; such logs are
 # treated as order 1. Rank count is parsed but not currently a plotting
 # dimension, so mixing rank counts in one results dir overlays them.
+# The _gam<0|1> GPU-aware MPI component is likewise optional for older logs. A series
+# holds one log per refinement, so each setting is plotted separately;
+# plot_gpu_aware_mpi_speedup.py compares the two.
 LOG_NAME_RE = re.compile(
     r"^(?P<tag>[A-Za-z0-9]+)_(?P<device>[A-Za-z0-9-]+)_(?P<asm>[A-Za-z]+)"
-    r"(?:_p(?P<p>\d+))?(?:_n(?P<n>\d+))?_r(?P<r>\d+)\.log$"
+    r"(?:_p(?P<p>\d+))?(?:_n(?P<n>\d+))?_r(?P<r>\d+)(?:_gam(?P<gam>[01]))?\.log$"
 )
 
 # Polynomial order -> color (primary categorical dimension, Tableau palette).
@@ -202,21 +207,25 @@ def parse_log(path: Path):
     return dofs, group_times
 
 
-def collect(results_dir: Path, rank_filter: dict[str, int] | None = None):
+def collect(
+    results_dir: Path, rank_filter: dict[str, int] | None = None, gam: str | None = None
+):
     """Group runs by (example tag, (device_family, assembly, order)).
     Returns {tag: {(family, assembly, order): [(refinement, dofs, group_times), ...]}}.
 
     Devices are folded to their family (cpu/hip), so ceed-cpu/ceed-hip share a
     series with cpu/hip; legacy/full are merged per merge_assembled_levels(). If
     `rank_filter` is given (a {family: rank_count} mapping), only logs whose
-    MPI-rank count matches the requirement for their device family are kept.
+    MPI-rank count matches the requirement for their device family are kept. Only
+    logs with the GPU-aware MPI setting `gam` are kept: "0", "1", or None for logs
+    without a _gam suffix.
     """
     runs: dict[
         str, dict[tuple[str, str, int], list[tuple[int, int, dict[str, float]]]]
     ] = {}
     for log in sorted(results_dir.glob("*.log")):
         m = LOG_NAME_RE.match(log.name)
-        if not m:
+        if not m or m.group("gam") != gam:
             continue
         tag = m.group("tag")
         family = device_family(m.group("device"))
@@ -255,14 +264,15 @@ def kind_value(group_times: dict[str, float], components: list[str]):
 
 
 def plot_kind(tag: str, by_run, kind_label: str, components, out_path: Path,
-              normalize: bool = False, rank_filter: dict[str, int] | None = None):
+              normalize: bool = False, rank_filter: dict[str, int] | None = None,
+              gam: str | None = None):
     """Plot one section-kind for one example.
 
     `by_run` is {(device, assembly, order): [(refinement, dofs, group_times), ...]}.
     `components` lists which section groups are summed for the y value. If
     `normalize` is True, the y-axis is divided by the global number of true DoFs.
     If `rank_filter` is given, the per-family rank counts are shown in the device
-    legend labels.
+    legend labels. If `gam` is given, the GPU-aware MPI setting is shown in the title.
     """
     fig, ax = plt.subplots(figsize=(9, 6.5))
 
@@ -352,13 +362,14 @@ def plot_kind(tag: str, by_run, kind_label: str, components, out_path: Path,
     ax.add_artist(device_legend)
     ax.legend(handles=assembly_handles, title="Assembly", loc="lower right", fontsize=9)
 
+    setting = f", GPU-aware MPI {'on' if gam == '1' else 'off'}" if gam else ""
     ax.set_xlabel("Number of true DoFs")
     if normalize:
         ax.set_ylabel(f"Cumulative time per DoF [s/DoF]")
-        ax.set_title(f"{tag}: {kind_label} time per DoF")
+        ax.set_title(f"{tag}: {kind_label} time per DoF{setting}")
     else:
         ax.set_ylabel(f"Cumulative time [s]")
-        ax.set_title(f"{tag}: {kind_label} time")
+        ax.set_title(f"{tag}: {kind_label} time{setting}")
     ax.grid(True, which="both", linestyle="--", alpha=0.3)
     fig.tight_layout()
     fig.savefig(out_path, dpi=150)
@@ -389,23 +400,31 @@ def main():
         rank_filter = {"cpu": cpu_ranks, "hip": hip_ranks}
         suffix = f"_cpu{cpu_ranks}_hip{hip_ranks}"
 
-    runs = collect(results_dir, rank_filter)
-    if not runs:
-        print("No usable logs found.", file=sys.stderr)
+    names = (LOG_NAME_RE.match(log.name) for log in results_dir.glob("*.log"))
+    gams = sorted({m.group("gam") for m in names if m}, key=str)
+    runs_by_gam = {gam: collect(results_dir, rank_filter, gam) for gam in gams}
+    if not any(runs_by_gam.values()):
+        print(
+            "No usable logs found. Logs must be named "
+            "<example>_<device>_<assembly>[_p<P>][_n<R>]_r<N>[_gam<0|1>].log.",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
-    for tag, by_run in runs.items():
-        for kind_label, components, slug in PLOT_KINDS:
-            plot_kind(
-                tag, by_run, kind_label, components,
-                results_dir / f"{tag}_{slug}_timings{suffix}.png",
-                rank_filter=rank_filter,
-            )
-            plot_kind(
-                tag, by_run, kind_label, components,
-                results_dir / f"{tag}_{slug}_timings_per_dof{suffix}.png",
-                normalize=True, rank_filter=rank_filter,
-            )
+    for gam, runs in runs_by_gam.items():
+        gam_suffix = f"_gam{gam}" if gam else ""
+        for tag, by_run in runs.items():
+            for kind_label, components, slug in PLOT_KINDS:
+                plot_kind(
+                    tag, by_run, kind_label, components,
+                    results_dir / f"{tag}_{slug}_timings{suffix}{gam_suffix}.png",
+                    rank_filter=rank_filter, gam=gam,
+                )
+                plot_kind(
+                    tag, by_run, kind_label, components,
+                    results_dir / f"{tag}_{slug}_timings_per_dof{suffix}{gam_suffix}.png",
+                    normalize=True, rank_filter=rank_filter, gam=gam,
+                )
 
 
 if __name__ == "__main__":

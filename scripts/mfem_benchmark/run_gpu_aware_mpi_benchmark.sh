@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 #
-# Variant of run_benchmark.sh that runs every example/parameter combination
-# TWICE -- once with MFEM's GPU-aware MPI enabled and once with it disabled --
-# then calls plot_gpu_aware_mpi_speedup.py to plot, for each timed subroutine
-# (and their sum), the speedup gained by enabling GPU-aware MPI vs. the number of
-# true DoFs.
+# Variant of run_benchmark.sh that runs every example/parameter combination with
+# MFEM's GPU-aware MPI enabled, disabled, or (by default) both, as selected by GAMS.
+# When both are selected, it then calls plot_gpu_aware_mpi_speedup.py to plot, for
+# each timed subroutine (and their sum), the speedup gained by enabling GPU-aware
+# MPI vs. the number of true DoFs.
 #
 # GPU-aware MPI is toggled through MFEM's MFEM_GPU_AWARE_MPI environment variable
 # (read in mfem::Device's constructor): exported -> enabled, unset -> disabled.
@@ -40,10 +40,15 @@
 #                    cancelled and all higher refinement levels for the same
 #                    parameters are skipped (default: 600)
 #
+# Environment override specific to this script:
+#   GAMS           - space-separated list of GPU-aware MPI settings to run, in the
+#                    order given: 1 = on, 0 = off (default: "1 0")
+#
 # After completion, results_dir contains:
 #   <example>_<device>_<assembly>_p<P>_n<R>_r<N>_gam<0|1>.log — raw stdout of each
 #                    run (gam1 = GPU-aware MPI on, gam0 = off)
-#   <example>_*_gpu_aware_mpi_speedup.png — speedup-vs-DoFs plot per example
+#   <example>_*_gpu_aware_mpi_speedup.png — speedup-vs-DoFs plot per example, if
+#                    GAMS selected both settings
 
 set -uo pipefail
 
@@ -62,6 +67,16 @@ RANKS="${RANKS:-1}"
 MPI_LAUNCHER="${MPI_LAUNCHER:-srun -n}"
 TIMEOUT="${TIMEOUT:-600}"
 GPU_BIND="${GPU_BIND:-0}"
+GAMS="${GAMS:-1 0}"
+
+# A malformed entry would otherwise run with a wrong setting under a misleading log
+# name: "0,1" evaluates as true in the (( gam )) test below.
+for gam in $GAMS; do
+  if [[ "$gam" != 0 && "$gam" != 1 ]]; then
+    echo "ERROR: GAMS entries must be 0 or 1, got '$gam'." >&2
+    exit 1
+  fi
+done
 
 # Split the launcher prefix into words so e.g. "srun -n" stays two tokens; the
 # rank count and executable are appended per run below.
@@ -173,10 +188,10 @@ for tag in $EXAMPLES; do
         for ranks in $RANKS; do
           for r in $REFINEMENTS; do
             timed_out=0
-            # Run with GPU-aware MPI on (gam=1) and off (gam=0). MFEM enables it
+            # Run with GPU-aware MPI on (gam=1) and/or off (gam=0). MFEM enables it
             # when MFEM_GPU_AWARE_MPI is set in the environment, so we export it
             # for the "on" run and unset it for the "off" run.
-            for gam in 1 0; do
+            for gam in $GAMS; do
               if (( gam )); then
                 export MFEM_GPU_AWARE_MPI=1
               else
@@ -227,5 +242,11 @@ if (( ${#failures[@]} > 0 )); then
 fi
 
 echo
-echo "Generating GPU-aware MPI speedup plots..."
-python3 "$SCRIPT_DIR/plot_gpu_aware_mpi_speedup.py" "$RESULTS_DIR"
+# The speedup plots pair each gam1 log with its gam0 log, and exit with an error if
+# there are no pairs.
+if [[ " $GAMS " == *" 0 "* && " $GAMS " == *" 1 "* ]]; then
+  echo "Generating GPU-aware MPI speedup plots..."
+  python3 "$SCRIPT_DIR/plot_gpu_aware_mpi_speedup.py" "$RESULTS_DIR"
+else
+  echo "Skipping GPU-aware MPI speedup plots: GAMS=\"$GAMS\" selects only one setting."
+fi
