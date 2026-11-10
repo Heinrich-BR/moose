@@ -37,6 +37,10 @@ echo "Application running on node ${SLURMD_NODENAME}"
 
 source "$ENV_SCRIPT" || exit 1
 
+# Disable core dumps: every rank of a crashed run would otherwise write a
+# core.<pid> file into the test directory the benchmark script runs from.
+ulimit -c 0
+
 export EXAMPLES="diffusion curlcurl complex heattransfer"
 export REFINEMENTS="0 1 2 3 4 5"
 export DEVICES="ceed-cuda"
