@@ -12,6 +12,9 @@
 # calls `_mfem_device->SetGPUAwareMPI(true)` unconditionally, remove that line (or
 # guard it) so the environment variable is respected.
 #
+# Each series (example, device, assembly level, order, rank count) starts with an
+# untimed warmup run at the lowest refinement level; see the comment at the call.
+#
 # Usage:
 #   ./run_gpu_aware_mpi_benchmark.sh [results_dir]
 #
@@ -68,6 +71,9 @@ MPI_LAUNCHER="${MPI_LAUNCHER:-srun -n}"
 TIMEOUT="${TIMEOUT:-600}"
 GPU_BIND="${GPU_BIND:-0}"
 GAMS="${GAMS:-1 0}"
+
+# Refinement levels run in ascending order, so the first is the cheapest to warm up with.
+read -r WARMUP_REFINEMENT _ <<< "$REFINEMENTS"
 
 # A malformed entry would otherwise run with a wrong setting under a misleading log
 # name: "0,1" evaluates as true in the (( gam )) test below.
@@ -170,6 +176,23 @@ order_args() {
   esac
 }
 
+# Run the case selected by the sweep loop below (inp, device, asm, ranks,
+# ORDER_ARGS, SOLVER_ARGS) at refinement level $1, writing its output to $2.
+# Returns timeout's exit status, which is 124 on timeout.
+run_case() {
+  # --kill-after sends SIGKILL if the launcher ignores the initial
+  # SIGTERM (e.g. a hung GPU job) so a stuck run cannot wedge the sweep.
+  timeout --kill-after=30s "$TIMEOUT" \
+      "${LAUNCHER[@]}" "$ranks" "${EXEC[@]}" -i "$inp" \
+      Mesh/parallel_refine="$1" \
+      Executioner/device="$device" \
+      Executioner/assembly_level="$asm" \
+      "${ORDER_ARGS[@]}" \
+      "${SOLVER_ARGS[@]}" \
+      Outputs/perf_graph=true \
+      > "$2" 2>&1
+}
+
 cd "$TEST_DIR"
 
 failures=()
@@ -186,6 +209,13 @@ for tag in $EXAMPLES; do
       for p in $ORDERS; do
         order_args "$tag" "$p"
         for ranks in $RANKS; do
+          # The first run of a series pays a one-off setup cost that later runs on
+          # the node do not (median 2x in FormLinearSystem on HIP), and it is always
+          # the first GAMS setting at the lowest level, which biases that pair. This
+          # untimed run absorbs the cost; its output is discarded and a failure here
+          # is reported by the timed run at the same level.
+          echo ">>> $tag  device=$device  assembly=$asm  order=$p  ranks=$ranks  parallel_refine=$WARMUP_REFINEMENT  (warmup)"
+          run_case "$WARMUP_REFINEMENT" /dev/null
           for r in $REFINEMENTS; do
             timed_out=0
             # Run with GPU-aware MPI on (gam=1) and/or off (gam=0). MFEM enables it
@@ -199,17 +229,7 @@ for tag in $EXAMPLES; do
               fi
               log="$RESULTS_DIR/${tag}_${device}_${asm}_p${p}_n${ranks}_r${r}_gam${gam}.log"
               echo ">>> $tag  device=$device  assembly=$asm  order=$p  ranks=$ranks  parallel_refine=$r  gpu_aware_mpi=$gam"
-              # --kill-after sends SIGKILL if the launcher ignores the initial
-              # SIGTERM (e.g. a hung GPU job) so a stuck run cannot wedge the sweep.
-              timeout --kill-after=30s "$TIMEOUT" \
-                  "${LAUNCHER[@]}" "$ranks" "${EXEC[@]}" -i "$inp" \
-                  Mesh/parallel_refine="$r" \
-                  Executioner/device="$device" \
-                  Executioner/assembly_level="$asm" \
-                  "${ORDER_ARGS[@]}" \
-                  "${SOLVER_ARGS[@]}" \
-                  Outputs/perf_graph=true \
-                  > "$log" 2>&1
+              run_case "$r" "$log"
               status=$?
               if (( status == 124 )); then
                 echo "    TIMED OUT (>${TIMEOUT}s)"
