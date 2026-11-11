@@ -26,6 +26,10 @@
 # solution, so MatrixFreeAMS is paired with CG only.
 # curlcurl uses the GaussLobatto closed / IntegratedGLL open ND basis, which
 # MatrixFreeAMS requires, in every combination, so they all solve the same system.
+# On the CPU, full and partial assembly are much slower than legacy assembly. There,
+# diffusion's full-assembly combinations run with legacy assembly, and the
+# partial-assembly cases are skipped: their matrix-free preconditioners only stand in
+# for the hypre ones, which legacy assembly makes available.
 #
 # Usage:
 #   ./run_solver_study.sh [results_dir]
@@ -148,6 +152,16 @@ run_combo() {
   fi
 }
 
+# Assembly levels of the assembled-matrix and matrix-free cases; see the header for the
+# CPU's.
+if [[ "$DEVICE" == cpu ]]; then
+  ASSEMBLED=legacy
+  RUN_PARTIAL=0
+else
+  ASSEMBLED=full
+  RUN_PARTIAL=1
+fi
+
 # Outer solver tolerance and iteration cap for the [Solvers] entry named $1.
 tol_args() {
   echo "Solvers/$1/l_tol=$TOL Solvers/$1/l_max_its=$MAX_ITS"
@@ -157,40 +171,42 @@ tol_args() {
 # a residual norm on every application, which costs extra operator applications.
 # diffusion.i: [main] is HypreGMRES preconditioned by [boomeramg]; [jacobi] is inactive.
 
-# diffusion, full assembly
+# diffusion, full assembly (legacy on the CPU)
 for type in MFEMHypreGMRES:hypregmres MFEMHyprePCG:hyprepcg MFEMCGSolver:cg; do
-  run_combo diffusion full "${type#*:}-amg" "$DIFFUSION" "${DIFFUSION_ARGS[@]}" \
+  run_combo diffusion "$ASSEMBLED" "${type#*:}-amg" "$DIFFUSION" "${DIFFUSION_ARGS[@]}" \
       Solvers/main/type="${type%:*}" Solvers/boomeramg/print_level=0 $(tol_args main)
 done
-run_combo diffusion full cg-jacobi "$DIFFUSION" "${DIFFUSION_ARGS[@]}" \
+run_combo diffusion "$ASSEMBLED" cg-jacobi "$DIFFUSION" "${DIFFUSION_ARGS[@]}" \
     Solvers/inactive=boomeramg Solvers/main/type=MFEMCGSolver \
     Solvers/main/preconditioner=jacobi $(tol_args main)
 
 # diffusion, partial assembly
-run_combo diffusion partial cg-jacobi "$DIFFUSION" "${DIFFUSION_ARGS[@]}" \
-    Solvers/inactive=boomeramg Solvers/main/type=MFEMCGSolver \
-    Solvers/main/preconditioner=jacobi $(tol_args main)
-run_combo diffusion partial cg-chebyshev "$DIFFUSION" "${DIFFUSION_ARGS[@]}" \
-    "Solvers/inactive=boomeramg jacobi" \
-    Solvers/chebyshev/type=MFEMOperatorChebyshevSmoother \
-    Solvers/main/type=MFEMCGSolver Solvers/main/preconditioner=chebyshev $(tol_args main)
-# One Chebyshev smoother per level above order 1. The order 1 level is assembled
-# (legacy) for BoomerAMG and the levels between it and the finest are partially
-# assembled. The coarse CG + BoomerAMG solve uses the settings of MFEM example 26p.
-pmg_levels=()
-for p in $(seq 2 "$ORDER"); do
-  pmg_levels+=("Solvers/chebyshev$p/type=MFEMOperatorChebyshevSmoother")
-done
-run_combo diffusion partial cg-pmg "$DIFFUSION_PMG" "${PMG_ARGS[@]}" \
-    Solvers/inactive=jacobi Solvers/boomeramg/print_level=0 \
-    Solvers/coarse/type=MFEMCGSolver Solvers/coarse/preconditioner=boomeramg \
-    Solvers/coarse/l_tol=1e-2 Solvers/coarse/l_max_its=10 Solvers/coarse/print_level=-1 \
-    "${pmg_levels[@]}" \
-    Solvers/pmg/type=MFEMGeometricMultigridSolver Solvers/pmg/variable=concentration \
-    "Solvers/pmg/smoothers=$(seq -s ' ' -f 'chebyshev%g' 2 "$ORDER")" \
-    Solvers/pmg/coarse_solver=coarse \
-    "Solvers/pmg/assembly_levels=legacy$(printf ' partial%.0s' $(seq 2 "$ORDER"))" \
-    Solvers/main/type=MFEMCGSolver Solvers/main/preconditioner=pmg $(tol_args main)
+if (( RUN_PARTIAL )); then
+  run_combo diffusion partial cg-jacobi "$DIFFUSION" "${DIFFUSION_ARGS[@]}" \
+      Solvers/inactive=boomeramg Solvers/main/type=MFEMCGSolver \
+      Solvers/main/preconditioner=jacobi $(tol_args main)
+  run_combo diffusion partial cg-chebyshev "$DIFFUSION" "${DIFFUSION_ARGS[@]}" \
+      "Solvers/inactive=boomeramg jacobi" \
+      Solvers/chebyshev/type=MFEMOperatorChebyshevSmoother \
+      Solvers/main/type=MFEMCGSolver Solvers/main/preconditioner=chebyshev $(tol_args main)
+  # One Chebyshev smoother per level above order 1. The order 1 level is assembled
+  # (legacy) for BoomerAMG and the levels between it and the finest are partially
+  # assembled. The coarse CG + BoomerAMG solve uses the settings of MFEM example 26p.
+  pmg_levels=()
+  for p in $(seq 2 "$ORDER"); do
+    pmg_levels+=("Solvers/chebyshev$p/type=MFEMOperatorChebyshevSmoother")
+  done
+  run_combo diffusion partial cg-pmg "$DIFFUSION_PMG" "${PMG_ARGS[@]}" \
+      Solvers/inactive=jacobi Solvers/boomeramg/print_level=0 \
+      Solvers/coarse/type=MFEMCGSolver Solvers/coarse/preconditioner=boomeramg \
+      Solvers/coarse/l_tol=1e-2 Solvers/coarse/l_max_its=10 Solvers/coarse/print_level=-1 \
+      "${pmg_levels[@]}" \
+      Solvers/pmg/type=MFEMGeometricMultigridSolver Solvers/pmg/variable=concentration \
+      "Solvers/pmg/smoothers=$(seq -s ' ' -f 'chebyshev%g' 2 "$ORDER")" \
+      Solvers/pmg/coarse_solver=coarse \
+      "Solvers/pmg/assembly_levels=legacy$(printf ' partial%.0s' $(seq 2 "$ORDER"))" \
+      Solvers/main/type=MFEMCGSolver Solvers/main/preconditioner=pmg $(tol_args main)
+fi
 
 # curlcurl.i: active are [gmres], HypreGMRES preconditioned by [ams], and [ams];
 # inactive are [cg], MFEM CG preconditioned by [matrix_free_ams], and [matrix_free_ams].
@@ -208,14 +224,16 @@ run_combo curlcurl legacy cg-jacobi "$CURLCURL" "${CURLCURL_ARGS[@]}" \
     Solvers/cg/preconditioner=jacobi $(tol_args cg)
 
 # curlcurl, partial assembly
-run_combo curlcurl partial cg-mfams "$CURLCURL" "${CURLCURL_ARGS[@]}" \
-    "Solvers/active=cg matrix_free_ams" $(tol_args cg)
-run_combo curlcurl partial cg-chebyshev "$CURLCURL" "${CURLCURL_ARGS[@]}" \
-    "Solvers/active=cg chebyshev" Solvers/chebyshev/type=MFEMOperatorChebyshevSmoother \
-    Solvers/cg/preconditioner=chebyshev $(tol_args cg)
-run_combo curlcurl partial cg-jacobi "$CURLCURL" "${CURLCURL_ARGS[@]}" \
-    "Solvers/active=cg jacobi" Solvers/jacobi/type=MFEMOperatorJacobiSmoother \
-    Solvers/cg/preconditioner=jacobi $(tol_args cg)
+if (( RUN_PARTIAL )); then
+  run_combo curlcurl partial cg-mfams "$CURLCURL" "${CURLCURL_ARGS[@]}" \
+      "Solvers/active=cg matrix_free_ams" $(tol_args cg)
+  run_combo curlcurl partial cg-chebyshev "$CURLCURL" "${CURLCURL_ARGS[@]}" \
+      "Solvers/active=cg chebyshev" Solvers/chebyshev/type=MFEMOperatorChebyshevSmoother \
+      Solvers/cg/preconditioner=chebyshev $(tol_args cg)
+  run_combo curlcurl partial cg-jacobi "$CURLCURL" "${CURLCURL_ARGS[@]}" \
+      "Solvers/active=cg jacobi" Solvers/jacobi/type=MFEMOperatorJacobiSmoother \
+      Solvers/cg/preconditioner=jacobi $(tol_args cg)
+fi
 
 echo
 if (( ${#failures[@]} > 0 )); then
