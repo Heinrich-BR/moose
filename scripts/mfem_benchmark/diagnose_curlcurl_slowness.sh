@@ -55,6 +55,7 @@ fi
 mkdir -p "$RESULTS_DIR"
 # Made absolute because the runs write their logs after changing to $TEST_DIR.
 RESULTS_DIR="$(cd "$RESULTS_DIR" && pwd)"
+source "$SCRIPT_DIR/timed_run.sh"
 cd "$TEST_DIR"
 
 # Solver overrides. The curlcurl input already sets l_tol=1e-12 on its gmres and cg
@@ -81,15 +82,13 @@ run() {
   local log="$RESULTS_DIR/$name.log"
   RUN_NAMES+=("$name")
   echo ">>> $name  (device=$device  ranks=$ranks)"
-  # --kill-after sends SIGKILL if the launcher ignores the initial SIGTERM.
-  timeout --kill-after=30s "$TIMEOUT" \
+  timed_run "$TIMEOUT" "$log" \
       "${LAUNCHER[@]}" "$ranks" "${EXEC[@]}" -i "$inp" \
       Mesh/parallel_refine=0 \
       Executioner/device="$device" \
       Executioner/assembly_level=legacy \
       "$@" \
-      Outputs/perf_graph=true \
-      > "$log" 2>&1
+      Outputs/perf_graph=true
   local status=$?
   if (( status != 0 )); then
     echo "    FAILED (exit status $status) - see $log"

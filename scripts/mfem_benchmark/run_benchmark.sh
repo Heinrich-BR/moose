@@ -82,6 +82,8 @@ mkdir -p "$RESULTS_DIR"
 # Made absolute because the runs write their logs after changing to $TEST_DIR.
 RESULTS_DIR="$(cd "$RESULTS_DIR" && pwd)"
 
+source "$SCRIPT_DIR/timed_run.sh"
+
 # tag -> input file (relative to $TEST_DIR). The EXAMPLES variable selects which
 # of these tags to run.
 declare -A EXAMPLE_INPUTS=(
@@ -177,20 +179,17 @@ for tag in $EXAMPLES; do
           for r in $REFINEMENTS; do
             log="$RESULTS_DIR/${tag}_${device}_${asm}_p${p}_n${ranks}_r${r}_gam${gam}.log"
             echo ">>> $tag  device=$device  assembly=$asm  order=$p  ranks=$ranks  parallel_refine=$r"
-            # --kill-after sends SIGKILL if the launcher ignores the initial
-            # SIGTERM (e.g. a hung GPU job) so a stuck run cannot wedge the sweep.
-            timeout --kill-after=30s "$TIMEOUT" \
+            timed_run "$TIMEOUT" "$log" \
                 "${LAUNCHER[@]}" "$ranks" "${EXEC[@]}" -i "$inp" \
                 Mesh/parallel_refine="$r" \
                 Executioner/device="$device" \
                 Executioner/assembly_level="$asm" \
                 "${ORDER_ARGS[@]}" \
                 "${SOLVER_ARGS[@]}" \
-                Outputs/perf_graph=true \
-                > "$log" 2>&1
+                Outputs/perf_graph=true
             status=$?
             if (( status == 124 )); then
-              # timeout(1) exits 124 when the limit is hit. Refinement levels run
+              # timed_run returns 124 when the limit is hit. Refinement levels run
               # in ascending order, so every higher level for this same case would
               # be larger and time out too — skip them by breaking the r loop.
               echo "    TIMED OUT (>${TIMEOUT}s) — skipping higher refinement levels for this case"

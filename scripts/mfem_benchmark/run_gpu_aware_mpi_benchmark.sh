@@ -102,6 +102,8 @@ mkdir -p "$RESULTS_DIR"
 # Made absolute because the runs write their logs after changing to $TEST_DIR.
 RESULTS_DIR="$(cd "$RESULTS_DIR" && pwd)"
 
+source "$SCRIPT_DIR/timed_run.sh"
+
 # tag -> input file (relative to $TEST_DIR). The EXAMPLES variable selects which
 # of these tags to run.
 declare -A EXAMPLE_INPUTS=(
@@ -180,19 +182,16 @@ order_args() {
 
 # Run the case selected by the sweep loop below (inp, device, asm, ranks,
 # ORDER_ARGS, SOLVER_ARGS) at refinement level $1, writing its output to $2.
-# Returns timeout's exit status, which is 124 on timeout.
+# Returns timed_run's exit status, which is 124 on timeout.
 run_case() {
-  # --kill-after sends SIGKILL if the launcher ignores the initial
-  # SIGTERM (e.g. a hung GPU job) so a stuck run cannot wedge the sweep.
-  timeout --kill-after=30s "$TIMEOUT" \
+  timed_run "$TIMEOUT" "$2" \
       "${LAUNCHER[@]}" "$ranks" "${EXEC[@]}" -i "$inp" \
       Mesh/parallel_refine="$1" \
       Executioner/device="$device" \
       Executioner/assembly_level="$asm" \
       "${ORDER_ARGS[@]}" \
       "${SOLVER_ARGS[@]}" \
-      Outputs/perf_graph=true \
-      > "$2" 2>&1
+      Outputs/perf_graph=true
 }
 
 cd "$TEST_DIR"

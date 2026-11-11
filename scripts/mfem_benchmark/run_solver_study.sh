@@ -85,6 +85,7 @@ fi
 mkdir -p "$RESULTS_DIR/csv"
 # Made absolute because the runs write their logs after changing to $TEST_DIR.
 RESULTS_DIR="$(cd "$RESULTS_DIR" && pwd)"
+source "$SCRIPT_DIR/timed_run.sh"
 cd "$TEST_DIR"
 
 ORDER_NAMES=(CONSTANT FIRST SECOND THIRD FOURTH)
@@ -130,16 +131,14 @@ run_combo() {
   local name="${tag}_${DEVICE}_${asm}_${combo}_p${ORDER}_n${RANKS}_r${REFINE}"
   local log="$RESULTS_DIR/$name.log"
   echo ">>> $name"
-  # --kill-after sends SIGKILL if the launcher ignores the initial SIGTERM.
-  timeout --kill-after=30s "$TIMEOUT" \
+  timed_run "$TIMEOUT" "$log" \
       "${LAUNCHER[@]}" "$RANKS" "${EXEC[@]}" -i "$inp" \
       Mesh/parallel_refine="$REFINE" \
       Executioner/device="$DEVICE" \
       Executioner/assembly_level="$asm" \
       "$@" \
       Outputs/CSV/file_base="$RESULTS_DIR/csv/$name" \
-      Outputs/pgraph/type=PerfGraphOutput Outputs/pgraph/level=2 \
-      > "$log" 2>&1
+      Outputs/pgraph/type=PerfGraphOutput Outputs/pgraph/level=2
   local status=$?
   if (( status == 124 )); then
     echo "    TIMED OUT (>${TIMEOUT}s)"
