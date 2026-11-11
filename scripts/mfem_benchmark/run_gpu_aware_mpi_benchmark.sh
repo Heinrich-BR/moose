@@ -99,6 +99,8 @@ if [[ ! -x "$MOOSE_EXEC" ]]; then
 fi
 
 mkdir -p "$RESULTS_DIR"
+# Made absolute because the runs write their logs after changing to $TEST_DIR.
+RESULTS_DIR="$(cd "$RESULTS_DIR" && pwd)"
 
 # tag -> input file (relative to $TEST_DIR). The EXAMPLES variable selects which
 # of these tags to run.

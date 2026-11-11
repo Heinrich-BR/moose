@@ -79,6 +79,8 @@ if [[ ! -x "$MOOSE_EXEC" ]]; then
 fi
 
 mkdir -p "$RESULTS_DIR/csv"
+# Made absolute because the runs write their logs after changing to $TEST_DIR.
+RESULTS_DIR="$(cd "$RESULTS_DIR" && pwd)"
 cd "$TEST_DIR"
 
 ORDER_NAMES=(CONSTANT FIRST SECOND THIRD FOURTH)
