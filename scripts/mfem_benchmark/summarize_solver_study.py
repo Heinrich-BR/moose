@@ -73,8 +73,9 @@ def parse_log(path: Path, tol: float):
 
     # MFEM solvers print "PCG: Number of iterations: N" and, unless converged,
     # "PCG: No convergence!". MFEM's hypre wrappers print "PCG Iterations = N" and the
-    # final relative residual norm, which hypre compares with the tolerance.
-    mfem_its = re.findall(r"(?:PCG|GMRES): Number of iterations: (\d+)", text)
+    # final relative residual norm, which hypre compares with the tolerance. MOOSE's
+    # progress dots can land inside MFEM's line: "PCG: Number of iterations: .599".
+    mfem_its = re.findall(r"(?:PCG|GMRES): Number of iterations: [.\s]*(\d+)", text)
     hypre_its = re.findall(r"(?:PCG|GMRES) Iterations = (\d+)", text)
     hypre_res = re.findall(r"Final (?:PCG|GMRES) Relative Residual Norm = (\S+)", text)
     if hypre_its and hypre_res:

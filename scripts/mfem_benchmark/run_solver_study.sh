@@ -16,16 +16,16 @@
 #                       smoothers on partially assembled levels, CG + BoomerAMG on the
 #                       assembled order 1 level)
 #   curlcurl, legacy:   HypreGMRES, HyprePCG and MFEM CG with HypreAMS; MFEM CG + Jacobi
-#   curlcurl, partial:  MFEM CG with MatrixFreeAMS, Chebyshev or Jacobi
+#   curlcurl, partial:  MFEM CG with Chebyshev or Jacobi
 # curlcurl uses legacy in place of full assembly, which MFEM does not implement for its
 # curl-curl integrator. Hypre solvers and preconditioners need an assembled
 # HypreParMatrix, so none runs on partial assembly; that includes the LOR-wrapped ones,
 # because MOOSE hands every preconditioner the matrix-free high-order operator.
-# MatrixFreeAMS runs a fixed number of inner CG iterations, so it is not a linear
-# operator; MFEM GMRES, which is not flexible, then reports convergence to a wrong
-# solution, so MatrixFreeAMS is paired with CG only.
-# curlcurl uses the GaussLobatto closed / IntegratedGLL open ND basis, which
-# MatrixFreeAMS requires, in every combination, so they all solve the same system.
+# curlcurl runs on MFEM's default ND basis. AMS builds its discrete gradient by point
+# evaluation, which from order 2 matches that basis only: on the GaussLobatto /
+# IntegratedGLL basis, AMS needs 6x more iterations already at parallel_refine=2.
+# MatrixFreeAMS is left out because MOOSE accepts it only on that basis, on which it
+# can fail to converge.
 # On the CPU, full and partial assembly are much slower than legacy assembly. There,
 # diffusion's full-assembly combinations run with legacy assembly, and the
 # partial-assembly cases are skipped: their matrix-free preconditioners only stand in
@@ -73,6 +73,9 @@ fi
 
 read -ra LAUNCHER <<< "$MPI_LAUNCHER"
 EXEC=("$MOOSE_EXEC")
+# One thread per rank. hypre and OpenBLAS are OpenMP-threaded in MOOSE's stock PETSc
+# build (--with-openmp=1), and otherwise start a thread per core in every rank.
+export OMP_NUM_THREADS=1
 if [[ "$GPU_BIND" == 1 ]]; then
   EXEC=("$SCRIPT_DIR/gpu_bind.sh" "$MOOSE_EXEC")
 fi
@@ -117,11 +120,23 @@ PMG_ARGS=(Mesh/file="$TEST_DIR/tests/mfem/mesh/mug.e"
 # The L2 error against the exact solution is written to the CSV file, so the summary
 # can check that every combination reached the same solution.
 CURLCURL_ARGS=(FESpaces/HCurlFESpace/fec_order="$FEC" FESpaces/HDivFESpace/fec_order="$RT_FEC"
-               FESpaces/HCurlFESpace/closed_basis=GaussLobatto
-               FESpaces/HCurlFESpace/open_basis=IntegratedGLL
                Postprocessors/e_error/type=MFEMVectorL2Error
                Postprocessors/e_error/variable=e_field
                Postprocessors/e_error/function=exact_e_field)
+
+# moose_run <log> <csv_file_base> <assembly> <input> <overrides...>
+moose_run() {
+  local log="$1" csv="$2" asm="$3" inp="$4"
+  shift 4
+  timed_run "$TIMEOUT" "$log" \
+      "${LAUNCHER[@]}" "$RANKS" "${EXEC[@]}" -i "$inp" \
+      Mesh/parallel_refine="$REFINE" \
+      Executioner/device="$DEVICE" \
+      Executioner/assembly_level="$asm" \
+      "$@" \
+      Outputs/CSV/file_base="$csv" \
+      Outputs/pgraph/type=PerfGraphOutput Outputs/pgraph/level=2
+}
 
 failures=()
 # run_combo <example> <assembly> <combination> <input> <overrides...>
@@ -131,14 +146,7 @@ run_combo() {
   local name="${tag}_${DEVICE}_${asm}_${combo}_p${ORDER}_n${RANKS}_r${REFINE}"
   local log="$RESULTS_DIR/$name.log"
   echo ">>> $name"
-  timed_run "$TIMEOUT" "$log" \
-      "${LAUNCHER[@]}" "$RANKS" "${EXEC[@]}" -i "$inp" \
-      Mesh/parallel_refine="$REFINE" \
-      Executioner/device="$DEVICE" \
-      Executioner/assembly_level="$asm" \
-      "$@" \
-      Outputs/CSV/file_base="$RESULTS_DIR/csv/$name" \
-      Outputs/pgraph/type=PerfGraphOutput Outputs/pgraph/level=2
+  moose_run "$log" "$RESULTS_DIR/csv/$name" "$asm" "$inp" "$@"
   local status=$?
   if (( status == 124 )); then
     echo "    TIMED OUT (>${TIMEOUT}s)"
@@ -165,6 +173,14 @@ fi
 tol_args() {
   echo "Solvers/$1/l_tol=$TOL Solvers/$1/l_max_its=$MAX_ITS"
 }
+
+# The first run of a job pays a one-off setup cost that later runs on the node do not
+# (FormLinearSystem 3x slower on HIP). This untimed run of the first combination below
+# absorbs it; its output is discarded and a failure here is reported by the timed run.
+echo ">>> warmup"
+moose_run /dev/null "$RESULTS_DIR/warmup" "$ASSEMBLED" "$DIFFUSION" "${DIFFUSION_ARGS[@]}" \
+    Solvers/main/type=MFEMHypreGMRES Solvers/boomeramg/print_level=0 $(tol_args main)
+rm -f "$RESULTS_DIR"/warmup*.csv
 
 # Preconditioners print at level 0: at hypre's default of 2, BoomerAMG and AMS compute
 # a residual norm on every application, which costs extra operator applications.
@@ -224,8 +240,6 @@ run_combo curlcurl legacy cg-jacobi "$CURLCURL" "${CURLCURL_ARGS[@]}" \
 
 # curlcurl, partial assembly
 if (( RUN_PARTIAL )); then
-  run_combo curlcurl partial cg-mfams "$CURLCURL" "${CURLCURL_ARGS[@]}" \
-      "Solvers/active=cg matrix_free_ams" $(tol_args cg)
   run_combo curlcurl partial cg-chebyshev "$CURLCURL" "${CURLCURL_ARGS[@]}" \
       "Solvers/active=cg chebyshev" Solvers/chebyshev/type=MFEMOperatorChebyshevSmoother \
       Solvers/cg/preconditioner=chebyshev $(tol_args cg)
