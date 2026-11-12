@@ -16,13 +16,25 @@
     input = curlcurl.i
     csvdiff = 'OutputData/CurlCurl/curlcurl_line_sample_db_dt_field_0001.csv '
               'OutputData/CurlCurl/curlcurl_line_sample_e_field_0001.csv'
-    cli_args = 'Solvers/active="cg matrix_free_ams" Executioner/assembly_level=partial '
-               'FESpaces/HCurlFESpace/closed_basis=GaussLobatto '
-               'FESpaces/HCurlFESpace/open_basis=IntegratedGLL'
+    cli_args = 'Solvers/active="cg matrix_free_ams" Executioner/assembly_level=partial'
     requirement = 'The system shall have the ability to solve a partially assembled definite Maxwell problem with Nedelec elements of the first kind using MFEM.'
     capabilities = 'mfem'
     compute_devices = 'cpu cuda'
     recover = false
+  []
+  [MFEMMatrixFreeAMSBasis]
+    type = RunException
+    input = curlcurl.i
+    cli_args = 'Solvers/active="cg matrix_free_ams" Executioner/assembly_level=partial '
+               'FESpaces/HCurlFESpace/open_basis=IntegratedGLL'
+    expect_err = 'MFEMMatrixFreeAMS requires an ND FESpace with closed_basis = GaussLobatto and '
+                 'open_basis = GaussLegendre'
+    design = 'MFEMMatrixFreeAMS.md'
+    requirement = 'The system shall report an error if the matrix-free auxiliary-space Maxwell '
+                  'preconditioner is used on a Nedelec basis other than the one its discrete '
+                  'gradient and interpolation operators assume.'
+    capabilities = 'mfem'
+    compute_devices = 'cpu cuda'
   []
   [MFEMDiffusion]
     type = CSVDiff

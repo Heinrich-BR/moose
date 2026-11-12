@@ -31,6 +31,12 @@ protected:
   virtual void SetSolverParameters(mfem::MatrixFreeAMS &) override {}
 
 private:
+  /// mfem::MatrixFreeAMS builds its discrete gradient and Nedelec interpolation by evaluating the
+  /// ND degrees of freedom at Gauss-Lobatto (closed) and Gauss-Legendre (open) points, so it
+  /// requires MFEM's default ND basis. Its low-order refinement applies only to the H1 auxiliary
+  /// spaces it builds itself, so the LOR basis requirement of the base class does not apply.
+  void CheckSpectralEquivalence(mfem::ParBilinearForm & blf) const override;
+
   mfem::Coefficient & _alpha_coef;
   mfem::Coefficient & _beta_coef;
   const int _inner_pi_its;

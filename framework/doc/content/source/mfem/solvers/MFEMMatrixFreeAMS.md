@@ -14,6 +14,14 @@ preconditioner for a curl-curl problem of the form
 
 where $\vec u, \vec v \in H(\mathrm{curl})$ and $\alpha$ and $\beta$ are scalar coefficients.
 
+!alert note `mfem::MatrixFreeAMS` builds the discrete gradient $G$ and the Nédélec interpolation
+$\Pi$ by evaluating the Nédélec degrees of freedom at Gauss-Lobatto (closed) and Gauss-Legendre
+(open) points, so the ND `FESpaces` block must keep its default `closed_basis = GaussLobatto` and
+`open_basis = GaussLegendre`. Unlike the LOR variants of other solvers
+([MFEMLORLinearSolverBase](MFEMLORLinearSolverBase.md)), it does not take
+`open_basis = IntegratedGLL`: its low-order refinement applies only to the $H^1$ auxiliary spaces,
+which it builds itself.
+
 The number of CG iterations to use for inner solves on the auxiliary spaces associated with the
 Nédélec interpolation operator $\Pi$ and the gradient operator $G$ can be controlled by the
 `inner_pi_iterations` and `inner_g_iterations` parameters, which both default to 2.

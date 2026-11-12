@@ -68,6 +68,17 @@ MFEMMatrixFreeAMS::SetOperatorImpl(const mfem::Operator & op)
                                                   _inner_g_its);
 }
 
+void
+MFEMMatrixFreeAMS::CheckSpectralEquivalence(mfem::ParBilinearForm & blf) const
+{
+  const auto fec = dynamic_cast<const mfem::ND_FECollection *>(blf.FESpace()->FEColl());
+  if (!fec || fec->GetClosedBasisType() != mfem::BasisType::GaussLobatto ||
+      fec->GetOpenBasisType() != mfem::BasisType::GaussLegendre)
+    mooseError("MFEMMatrixFreeAMS requires an ND FESpace with closed_basis = GaussLobatto and "
+               "open_basis = GaussLegendre (the defaults), the points at which it evaluates the "
+               "Nedelec degrees of freedom to build its discrete gradient and interpolation.");
+}
+
 template <>
 void
 Moose::MFEM::LORLinearSolverBase<mfem::MatrixFreeAMS>::UpdateEquationSystemContext()
