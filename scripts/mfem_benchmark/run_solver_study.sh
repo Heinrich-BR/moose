@@ -16,7 +16,7 @@
 #                       smoothers on partially assembled levels, CG + BoomerAMG on the
 #                       assembled order 1 level)
 #   curlcurl, legacy:   HypreGMRES, HyprePCG and MFEM CG with HypreAMS; MFEM CG + Jacobi
-#   curlcurl, partial:  MFEM CG with Chebyshev or Jacobi
+#   curlcurl, partial:  MFEM CG with MatrixFreeAMS, Chebyshev or Jacobi
 # curlcurl uses legacy in place of full assembly, which MFEM does not implement for its
 # curl-curl integrator. Hypre solvers and preconditioners need an assembled
 # HypreParMatrix, so none runs on partial assembly; that includes the LOR-wrapped ones,
@@ -24,8 +24,6 @@
 # curlcurl runs on MFEM's default ND basis. AMS builds its discrete gradient by point
 # evaluation, which from order 2 matches that basis only: on the GaussLobatto /
 # IntegratedGLL basis, AMS needs 6x more iterations already at parallel_refine=2.
-# MatrixFreeAMS is left out because MOOSE accepts it only on that basis, on which it
-# can fail to converge.
 # On the CPU, full and partial assembly are much slower than legacy assembly. There,
 # diffusion's full-assembly combinations run with legacy assembly, and the
 # partial-assembly cases are skipped: their matrix-free preconditioners only stand in
@@ -240,6 +238,8 @@ run_combo curlcurl legacy cg-jacobi "$CURLCURL" "${CURLCURL_ARGS[@]}" \
 
 # curlcurl, partial assembly
 if (( RUN_PARTIAL )); then
+  run_combo curlcurl partial cg-mfams "$CURLCURL" "${CURLCURL_ARGS[@]}" \
+      "Solvers/active=cg matrix_free_ams" $(tol_args cg)
   run_combo curlcurl partial cg-chebyshev "$CURLCURL" "${CURLCURL_ARGS[@]}" \
       "Solvers/active=cg chebyshev" Solvers/chebyshev/type=MFEMOperatorChebyshevSmoother \
       Solvers/cg/preconditioner=chebyshev $(tol_args cg)
